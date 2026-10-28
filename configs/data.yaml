@@ -1,0 +1,11 @@
+data_root: data/raw/dataset
+processed_root: data/processed
+output_root: outputs
+filename_rules:
+  flair_glob: "*_FLAIR.nii*"
+  t1_glob: "*_T1w.nii*"
+  roi_glob: "*_FLAIR_roi.nii*"
+validation:
+  require_flair: true
+  require_t1: false
+  require_fcd_labels: true

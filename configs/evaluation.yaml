@@ -1,0 +1,6 @@
+device: auto
+checkpoint: null
+split: test
+threshold: 0.5
+metrics: [dice, sensitivity]
+output_dir: outputs/evaluation

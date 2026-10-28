@@ -1,0 +1,16 @@
+# Provisional values; confirm scientifically before experiments.
+reference_modality: flair
+target_spacing_mm: null
+orientation: null
+registration:
+  enabled: false
+  backend: null
+normalization:
+  method: foreground_zscore
+  clip_percentiles: [0.5, 99.5]
+skull_stripping:
+  enabled: false
+  backend: null
+resampling:
+  image_interpolation: linear
+  mask_interpolation: nearest

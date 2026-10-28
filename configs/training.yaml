@@ -1,0 +1,11 @@
+seed: 42
+device: auto
+model: flair
+data_config: configs/data.yaml
+batch_size: 1
+epochs: 100
+learning_rate: 0.001
+num_workers: 0
+mixed_precision: false
+checkpoint_dir: outputs/checkpoints
+experiment_dir: outputs/experiments
