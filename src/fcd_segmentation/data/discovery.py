@@ -1,5 +1,7 @@
 """Portable discovery for BIDS-like subject/anat folders."""
+
 from pathlib import Path
+
 
 def discover_flair_files(data_root):
     root = Path(data_root).expanduser()
@@ -7,12 +9,16 @@ def discover_flair_files(data_root):
         raise NotADirectoryError(f"Dataset directory does not exist: {root}")
     candidates = list(root.glob("sub-*/anat/*_FLAIR.nii"))
     candidates += list(root.glob("sub-*/anat/*_FLAIR.nii.gz"))
-    found = sorted(p for p in set(candidates)
-                   if not p.name.endswith("_FLAIR_roi.nii")
-                   and not p.name.endswith("_FLAIR_roi.nii.gz"))
+    found = sorted(
+        p
+        for p in set(candidates)
+        if not p.name.endswith("_FLAIR_roi.nii")
+        and not p.name.endswith("_FLAIR_roi.nii.gz")
+    )
     if not found:
         raise FileNotFoundError(f"No FLAIR NIfTI images found under {root}/sub-*/anat/")
     return found
+
 
 def discover_roi_files(subject_anat_dir):
     folder = Path(subject_anat_dir)

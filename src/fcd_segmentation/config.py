@@ -1,6 +1,9 @@
 """Configuration loading and portable path helpers."""
+
 from pathlib import Path
+
 import yaml
+
 
 def load_yaml(path):
     with Path(path).open(encoding="utf-8") as stream:
@@ -8,6 +11,7 @@ def load_yaml(path):
     if not isinstance(value, dict):
         raise ValueError(f"Expected a YAML mapping in {path}")
     return value
+
 
 def resolve_path(value, base_dir=None):
     path = Path(value).expanduser()

@@ -1,12 +1,18 @@
 """Baseline foreground percentile clipping and z-score normalization."""
+
 import numpy as np
+
 
 def normalize_intensity(data, mask=None, *, clip_percentiles=(0.5, 99.5), eps=1e-8):
     values = np.asarray(data, dtype=np.float32)
     if values.ndim != 3:
         raise ValueError(f"Expected a 3D array, got {values.ndim} dimensions")
     finite = np.isfinite(values)
-    foreground = finite & (values != 0) if mask is None else finite & np.asarray(mask, dtype=bool)
+    foreground = (
+        finite & (values != 0)
+        if mask is None
+        else finite & np.asarray(mask, dtype=bool)
+    )
     if foreground.shape != values.shape:
         raise ValueError("Mask shape must match image shape")
     if not foreground.any():

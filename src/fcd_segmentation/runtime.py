@@ -1,5 +1,6 @@
 """Optional PyTorch device selection."""
 
+
 def get_device(requested: str = "auto"):
     """Choose auto (CUDA when available, otherwise CPU), cpu, or cuda."""
     try:
@@ -16,6 +17,8 @@ def get_device(requested: str = "auto"):
         return torch.device("cpu")
     if requested == "cuda":
         if not torch.cuda.is_available():
-            raise RuntimeError("CUDA requested but unavailable to this PyTorch install.")
+            raise RuntimeError(
+                "CUDA requested but unavailable to this PyTorch install."
+            )
         return torch.device("cuda")
     raise ValueError("requested must be one of: auto, cpu, cuda")

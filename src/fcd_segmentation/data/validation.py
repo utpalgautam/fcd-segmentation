@@ -31,5 +31,5 @@ def audit_dataset(data_root):
             result.warnings.append(
                 f"{subject} has {count} FLAIR acquisitions; "
                 "no automatic selection made."
-)
+            )
     return result
