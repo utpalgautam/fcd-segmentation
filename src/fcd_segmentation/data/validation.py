@@ -1,7 +1,10 @@
 """Initial file-level audit interfaces."""
+
 from dataclasses import dataclass, field
 from pathlib import Path
+
 from fcd_segmentation.data.discovery import discover_flair_files
+
 
 @dataclass
 class DatasetAudit:
@@ -9,6 +12,7 @@ class DatasetAudit:
     flair_files: list[Path] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+
 
 def audit_dataset(data_root):
     root = Path(data_root).expanduser().resolve()
@@ -25,6 +29,7 @@ def audit_dataset(data_root):
     for subject, count in sorted(counts.items()):
         if count > 1:
             result.warnings.append(
-                f"{subject} has {count} FLAIR acquisitions; no automatic selection made."
-            )
+                f"{subject} has {count} FLAIR acquisitions; "
+                "no automatic selection made."
+)
     return result
