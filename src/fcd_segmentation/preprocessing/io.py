@@ -6,20 +6,18 @@ without modifying source files.
 """
 
 from pathlib import Path
-from typing import Optional, Union
 
 import nibabel as nib
 import numpy as np
 
 from fcd_segmentation.preprocessing.geometry import validate_image_geometry
 
-
-PathLike = Union[str, Path]
+PathLike = str | Path
 
 
 def load_nifti(
     path: PathLike,
-    dtype: Optional[np.dtype] = np.float32,
+    dtype: np.dtype | None = np.float32,
     validate: bool = True,
 ) -> nib.Nifti1Image:
     """
@@ -131,7 +129,7 @@ def save_nifti(
     image: nib.spatialimages.SpatialImage,
     output_path: PathLike,
     overwrite: bool = False,
-    dtype: Optional[np.dtype] = None,
+    dtype: np.dtype | None = None,
 ) -> Path:
     """
     Save a NIfTI image to disk.

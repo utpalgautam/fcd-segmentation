@@ -10,15 +10,15 @@ Default:
     data/raw/dataset
 """
 
-from pathlib import Path
 import os
+from pathlib import Path
+from types import SimpleNamespace
 
 import nibabel as nib
 import numpy as np
 import pytest
 
 from fcd_segmentation.preprocessing import skull_stripping as ss
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT = Path(
@@ -465,10 +465,6 @@ def test_copy_nifti_overwrites_when_requested(tmp_path):
 # ---------------------------------------------------------------------------
 # Unit tests: mocked HD-BET execution
 # ---------------------------------------------------------------------------
-
-import subprocess
-from types import SimpleNamespace
-
 
 def _make_hdbet_input(tmp_path):
     """Create a valid synthetic FLAIR image and its expected subject ID."""

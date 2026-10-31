@@ -16,7 +16,6 @@ from fcd_segmentation.preprocessing.geometry import (
     validate_image_geometry,
 )
 
-
 # ---------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------

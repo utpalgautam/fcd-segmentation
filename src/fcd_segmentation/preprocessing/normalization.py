@@ -8,8 +8,8 @@ Background voxels are kept at zero. Input images are never modified
 in place.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence, Union
 
 import nibabel as nib
 import numpy as np
@@ -18,8 +18,8 @@ from numpy.typing import ArrayLike, NDArray
 
 def normalize_intensity(
     data: ArrayLike,
-    mask: Optional[ArrayLike] = None,
-    clip_percentiles: Optional[Sequence[float]] = (0.5, 99.5),
+    mask: ArrayLike | None = None,
+    clip_percentiles: Sequence[float] | None = (0.5, 99.5),
     eps: float = 1e-8,
 ) -> NDArray[np.float32]:
     """
@@ -148,8 +148,8 @@ def normalize_intensity(
 
 def normalize_image(
     image: nib.spatialimages.SpatialImage,
-    mask: Optional[ArrayLike] = None,
-    clip_percentiles: Optional[Sequence[float]] = (0.5, 99.5),
+    mask: ArrayLike | None = None,
+    clip_percentiles: Sequence[float] | None = (0.5, 99.5),
     eps: float = 1e-8,
 ) -> nib.Nifti1Image:
     """
@@ -196,10 +196,10 @@ def normalize_image(
 
 
 def normalize_nifti(
-    input_path: Union[str, Path],
-    output_path: Union[str, Path],
-    mask_path: Optional[Union[str, Path]] = None,
-    clip_percentiles: Optional[Sequence[float]] = (0.5, 99.5),
+    input_path: str | Path,
+    output_path: str | Path,
+    mask_path: str | Path | None = None,
+    clip_percentiles: Sequence[float] | None = (0.5, 99.5),
     eps: float = 1e-8,
 ) -> Path:
     """
