@@ -21,7 +21,7 @@ from fcd_segmentation.preprocessing.geometry import (
 # Constants
 # ---------------------------------------------------------------------
 
-SUPPORTED_DEVICES = {"cuda", "cpu"}
+SUPPORTED_DEVICES = {"cuda", "cpu", "mps"}
 
 # Conservative screening limits for QC, not diagnostic thresholds.
 MIN_BRAIN_FRACTION = 0.05
@@ -619,13 +619,11 @@ def generate_qc_index(
     """
     Generate an HTML page and CSV summary for visual QC.
 
-    Images are expected to be stored in output_dir/images/.
+    QC images may be stored in subject-specific subdirectories under
+    output_dir. The HTML links are made relative to output_dir.
     """
     output_dir = Path(output_dir)
-    images_dir = output_dir / "images"
-
     output_dir.mkdir(parents=True, exist_ok=True)
-    images_dir.mkdir(parents=True, exist_ok=True)
 
     index_path = output_dir / "index.html"
     csv_path = output_dir / "qc_summary.csv"
@@ -842,10 +840,7 @@ def process_subject(
     subject_id = flair_path.parent.parent.name
 
     subject_output_dir = output_root / subject_id
-    qc_dir = output_root / "visual_qc"
-    images_dir = qc_dir / "images"
-
-    images_dir.mkdir(parents=True, exist_ok=True)
+    subject_output_dir.mkdir(parents=True, exist_ok=True)
 
     record: dict[str, Any] = {
         "subject_id": subject_id,
@@ -887,7 +882,7 @@ def process_subject(
             overwrite=overwrite,
         )
 
-        qc_png = images_dir / f"{subject_id}_visual_qc.png"
+        qc_png = subject_output_dir / f"{subject_id}_qc.png"
 
         qc_result = create_visual_qc(
             original_flair_path=flair_path,
@@ -1028,7 +1023,7 @@ def run_dataset_hd_bet(
         # remain available even if a later subject fails.
         generate_qc_index(
             records,
-            output_root / "visual_qc",
+            output_root,
         )
 
         manifest_path = output_root / MANIFEST_NAME
@@ -1039,7 +1034,7 @@ def run_dataset_hd_bet(
 
     index_path, csv_path = generate_qc_index(
         records,
-        output_root / "visual_qc",
+        output_root,
     )
 
     manifest_path = output_root / MANIFEST_NAME

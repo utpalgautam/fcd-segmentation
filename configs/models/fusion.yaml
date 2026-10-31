@@ -1,1 +1,8 @@
-name: multimodal_fusion\nmodalities: [flair, t1]\nfusion_strategy: null\ninput_channels_per_modality: 1\noutput_channels: 1\ninput_shape: null\n
+name: multimodal_fusion
+modalities:
+  - flair
+  - t1
+fusion_strategy: null
+input_channels_per_modality: 1
+output_channels: 1
+input_shape: null

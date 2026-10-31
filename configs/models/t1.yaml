@@ -1,1 +1,5 @@
-name: t1_baseline\narchitecture: null\ninput_channels: 1\noutput_channels: 1\ninput_shape: null\n
+name: t1_baseline
+architecture: null
+input_channels: 1
+output_channels: 1
+input_shape: null
