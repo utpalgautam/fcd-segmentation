@@ -158,3 +158,14 @@ def validate_image_and_mask(
             f"Maximum corner displacement: {displacement:.6f} mm; "
             f"allowed: {tolerance_mm:.6f} mm."
         )
+
+def validate_3d_image(
+    image: nib.spatialimages.SpatialImage,
+) -> None:
+    """Validate that an image is a valid 3D medical image.
+
+    Compatibility wrapper for validate_image_geometry().
+    Raises:
+        ValueError: If the image dimensions or spatial geometry are invalid.
+    """
+    validate_image_geometry(image)

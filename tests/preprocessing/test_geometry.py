@@ -5,6 +5,7 @@ import pytest
 from fcd_segmentation.preprocessing.geometry import (
     maximum_corner_displacement_mm,
     same_grid,
+    validate_3d_image,
     validate_image_and_mask,
     validate_image_geometry,
 )
@@ -113,3 +114,17 @@ def test_validate_image_and_mask_rejects_grid_mismatch(image, mask):
     shifted = nib.Nifti1Image(np.asarray(mask.dataobj), affine)
     with pytest.raises(ValueError, match="do not match"):
         validate_image_and_mask(image, shifted)
+
+def test_validate_3d_image_compatibility_wrapper():
+    valid_image = nib.Nifti1Image(
+        np.zeros((2, 3, 4), dtype=np.float32),
+        np.eye(4),
+    )
+    validate_3d_image(valid_image)
+
+    invalid_image = nib.Nifti1Image(
+        np.zeros((2, 3), dtype=np.float32),
+        np.eye(4),
+    )
+    with pytest.raises(ValueError):
+        validate_3d_image(invalid_image)

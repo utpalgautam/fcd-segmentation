@@ -87,9 +87,7 @@ def normalize_intensity(
         foreground = (supplied_mask != 0) & finite_mask
 
     if not np.any(foreground):
-        raise ValueError(
-            "No valid foreground voxels are available for normalization."
-        )
+        raise ValueError("Cannot normalize an MRI volume with no foreground voxels.")
 
     foreground_values = output[foreground]
 

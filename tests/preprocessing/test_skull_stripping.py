@@ -1175,13 +1175,14 @@ def test_create_visual_qc_flags_empty_roi(tmp_path):
 
 def test_generate_qc_index_creates_html_and_csv(tmp_path):
     output_dir = tmp_path / "qc_reports"
+    qc_image = output_dir / "sub-001" / "sub-001_qc.png"
 
     records = [
         {
             "subject_id": "sub-001",
             "status": "success",
             "qc_status": "PASS",
-            "qc_image": str(output_dir / "images" / "sub-001.png"),
+            "qc_image": str(qc_image),
             "brain_voxels": 1000,
             "brain_fraction": 0.125,
             "stripped_nonzero_outside_mask": 0,
@@ -1197,13 +1198,15 @@ def test_generate_qc_index_creates_html_and_csv(tmp_path):
 
     assert index_path.is_file()
     assert csv_path.is_file()
-    assert (output_dir / "images").is_dir()
+    # The index generator links QC images; it does not create the images.
+    assert not (output_dir / "images").exists()
 
     html_content = index_path.read_text(encoding="utf-8")
     csv_content = csv_path.read_text(encoding="utf-8")
 
     assert "sub-001" in html_content
     assert "PASS" in html_content
+    assert "sub-001/sub-001_qc.png" in html_content
     assert "sub-001" in csv_content
     assert "brain_fraction" in csv_content
     assert "0.125" in csv_content

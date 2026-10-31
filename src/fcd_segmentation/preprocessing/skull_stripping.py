@@ -157,6 +157,8 @@ def _copy_nifti(
 # ---------------------------------------------------------------------
 
 def run_hd_bet(
+
+        
     input_path: str | Path,
     output_dir: str | Path,
     subject_id: str | None = None,
@@ -181,6 +183,9 @@ def run_hd_bet(
 
     input_path = Path(input_path).resolve()
     output_dir = Path(output_dir).resolve()
+
+    if device not in {"cpu", "cuda"}:
+        raise ValueError(f"Unsupported device: {device}")
 
     if device not in SUPPORTED_DEVICES:
         raise ValueError(

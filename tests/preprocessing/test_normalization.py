@@ -116,3 +116,15 @@ def test_normalize_nifti_mask_shape_mismatch_raises(tmp_path, image):
     nib.save(nib.Nifti1Image(np.ones((2, 2, 2)), np.eye(4)), mask_path)
     with pytest.raises(ValueError):
         normalize_nifti(source, tmp_path / "out.nii.gz", mask_path=mask_path)
+
+def test_normalization_preserves_zero_background_and_centers_foreground():
+    data = np.zeros((5, 5, 5), dtype=np.float32)
+    data[1:4, 1:4, 1:4] = (
+        np.arange(27, dtype=np.float32).reshape(3, 3, 3) + 1
+    )
+
+    result = normalize_intensity(data, clip_percentiles=None)
+
+    assert result.dtype == np.float32
+    assert np.all(result[data == 0] == 0)
+    assert np.mean(result[data != 0]) == pytest.approx(0, abs=1e-5)
