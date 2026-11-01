@@ -556,51 +556,6 @@ def run_pipeline(
     qc_reg_records: list[dict[str, Any]] = []
     qc_final_records: list[dict[str, Any]] = []
     failures: list[dict[str, str]] = []
-
-    for idx, subj_rec in enumerate(eligible_subjects, start=1):
-        s_id = subj_rec["subject_id"]
-        logger.info(f"Processing [{idx}/{len(eligible_subjects)}]: {s_id}")
-
-        res = process_subject_pipeline(
-            subject_record=subj_rec,
-            config=config,
-            config_hash=config_hash,
-            output_dirs=output_dirs,
-            logger_instance=logger,
-        )
-        pipeline_results.append(res)
-
-        if res.get("qc_flair_skullstrip"):
-            qc_flair_records.append(res["qc_flair_skullstrip"])
-        if res.get("qc_t1_skullstrip"):
-            qc_t1_records.append(res["qc_t1_skullstrip"])
-        if res.get("qc_registration"):
-            qc_reg_records.append(res["qc_registration"])
-        if res.get("dataset_validation"):
-            qc_final_records.append(res["dataset_validation"])
-
-        if res["status"] == "FAILED":
-            err_msg = "; ".join(res.get("errors", [])) or "Unknown failure"
-            failures.append({
-                "subject_id": s_id,
-                "split": subj_rec.get("split", "train"),
-                "error": err_msg,
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            })
-            if config.get("execution", {}).get("fail_fast", False):
-                logger.error(f"Fail-fast enabled: aborting pipeline due to failure on {s_id}.")
-                break
-
-    # Generate HTML reports
-    flair_html_path = qc_dir / "skull_stripping_FLAIR.html"
-    generate_skull_stripping_html(qc_flair_records, "FLAIR", flair_html_path)
-
-    t1_html_path = qc_dir / "skull_stripping_T1.html"
-    generate_skull_stripping_html(qc_t1_records, "T1", t1_html_path)
-
-    reg_html_path = qc_dir / "registration_T1_to_FLAIR.html"
-    generate_registration_html(qc_reg_records, reg_html_path)
-
     dataset_meta = {
         "FLAIR Dataset": str(output_dirs["flair_dataset"]),
         "T1 Dataset": str(output_dirs["t1_dataset"]),
@@ -610,8 +565,60 @@ def run_pipeline(
         "Skull Stripping": f"{config.get('skull_stripping', {}).get('backend', 'hd-bet')} ({config.get('skull_stripping', {}).get('device', 'cuda')})",
         "Normalization": f"{config.get('normalization', {}).get('method', 'foreground_zscore')} {config.get('normalization', {}).get('clip_percentiles', [0.5, 99.5])}",
     }
-    final_qc_html_path = qc_dir / "final_dataset_qc.html"
-    generate_final_dataset_qc_html(qc_final_records, dataset_meta, final_qc_html_path)
+
+    def _save_current_reports() -> None:
+        if qc_flair_records:
+            generate_skull_stripping_html(qc_flair_records, "FLAIR", qc_dir / "skull_stripping_FLAIR.html")
+        if qc_t1_records:
+            generate_skull_stripping_html(qc_t1_records, "T1", qc_dir / "skull_stripping_T1.html")
+        if qc_reg_records:
+            generate_registration_html(qc_reg_records, qc_dir / "registration_T1_to_FLAIR.html")
+        if qc_final_records:
+            generate_final_dataset_qc_html(qc_final_records, dataset_meta, qc_dir / "final_dataset_qc.html")
+
+    try:
+        for idx, subj_rec in enumerate(eligible_subjects, start=1):
+            s_id = subj_rec["subject_id"]
+            logger.info(f"Processing [{idx}/{len(eligible_subjects)}]: {s_id}")
+
+            res = process_subject_pipeline(
+                subject_record=subj_rec,
+                config=config,
+                config_hash=config_hash,
+                output_dirs=output_dirs,
+                logger_instance=logger,
+            )
+            pipeline_results.append(res)
+
+            if res.get("qc_flair_skullstrip"):
+                qc_flair_records.append(res["qc_flair_skullstrip"])
+            if res.get("qc_t1_skullstrip"):
+                qc_t1_records.append(res["qc_t1_skullstrip"])
+            if res.get("qc_registration"):
+                qc_reg_records.append(res["qc_registration"])
+            if res.get("dataset_validation"):
+                qc_final_records.append(res["dataset_validation"])
+
+            if res["status"] == "FAILED":
+                err_msg = "; ".join(res.get("errors", [])) or "Unknown failure"
+                failures.append({
+                    "subject_id": s_id,
+                    "split": subj_rec.get("split", "train"),
+                    "error": err_msg,
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                })
+                if config.get("execution", {}).get("fail_fast", False):
+                    logger.error(f"Fail-fast enabled: aborting pipeline due to failure on {s_id}.")
+                    break
+
+            # Progressively update HTML reports after each subject
+            _save_current_reports()
+
+    except KeyboardInterrupt:
+        logger.warning("\nPipeline interrupted by user (KeyboardInterrupt). Saving reports for completed subjects...")
+
+    # Final reports save
+    _save_current_reports()
 
     # Write failures CSV
     failures_csv_path = manifests_dir / "failures.csv"
