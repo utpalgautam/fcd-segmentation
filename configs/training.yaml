@@ -9,3 +9,20 @@ num_workers: 0
 mixed_precision: false
 checkpoint_dir: outputs/checkpoints
 experiment_dir: outputs/experiments
+
+# nnU-Net v2 specific settings
+nnunet_raw: data/processed
+nnunet_preprocessed: data/nnunet_preprocessed
+nnunet_results: outputs/nnunet_results
+
+datasets:
+  101: Dataset101_FLAIR
+  102: Dataset102_T1
+  103: Dataset103_Fusion
+
+configuration: 3d_fullres
+trainer: nnUNetTrainer
+plans: nnUNetPlans
+min_cases_for_five_fold: 5
+keep_going: false
+verify_dataset_integrity: true

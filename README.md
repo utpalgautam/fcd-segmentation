@@ -24,6 +24,11 @@ This repository provides an automated, auditable, and fully validated end-to-end
   - [Full Pipeline Execution (Linux)](#3-full-pipeline-execution-linux)
   - [Full Pipeline Execution (Windows)](#4-full-pipeline-execution-windows)
   - [CLI Flags & Options Reference](#cli-flags--options-reference)
+- [Model Training Workflow (nnU-Net v2)](#model-training-workflow-nnu-net-v2)
+  - [Environment & Dataset Check](#1-environment--dataset-check)
+  - [Experiment Preparation & Fingerprinting](#2-experiment-preparation--fingerprinting)
+  - [Single-Fold & 5-Fold Training](#3-single-fold--5-fold-training)
+  - [Resuming Training](#4-resuming-training)
 - [Quality Control (QC) Reports](#quality-control-qc-reports)
 - [Testing & Validation](#testing--validation)
 - [Troubleshooting & Common Issues](#troubleshooting--common-issues)
@@ -66,7 +71,7 @@ Raw Scans (data/raw/dataset/sub-XXXXX/anat/)
    [ 5. nnU-Net v2 Dataset Packaging & Atomic Delivery ]
    • Dataset101_FLAIR   (FLAIR-only)
    • Dataset102_T1      (Registered T1-only)
-   • Dataset103_Fusion  (Channel 0: FLAIR, Channel 1: T1)
+   • Dataset103_Fusion  (Channel 0: FLAclearIR, Channel 1: T1)
    • Shared subject splits (subject_splits.json) across all 3 datasets
              │
              ▼
@@ -94,6 +99,7 @@ Raw Scans (data/raw/dataset/sub-XXXXX/anat/)
 | **T1-to-FLAIR Registration** | **Complete** | SimpleITK rigid registration with mutual information; resamples T1 to FLAIR grid |
 | **Foreground Normalization** | **Complete** | Robust masked z-score normalization with percentile clipping ($0.5\% - 99.5\%$) |
 | **nnU-Net v2 Dataset Assembly** | **Complete** | Generates `Dataset101_FLAIR`, `Dataset102_T1`, and `Dataset103_Fusion` |
+| **nnU-Net v2 Model Training** | **Complete** | Environment checks, validation, cohort guards, preparation, and 5-fold CV orchestration |
 | **Interactive HTML QC Reports** | **Complete** | 5 standalone HTML reports with embedded Base64 slice visuals & red ROI contours |
 | **Automated Test Suite** | **Complete** | **161 unit & integration tests passing** (`pytest tests/`) |
 
@@ -330,6 +336,56 @@ python scripts\prepare_dataset.py --input data\raw\dataset --output data\process
 | `--device {cuda,cpu}` | Device selector for HD-BET skull stripping | Config default (`cuda`) |
 | `--fail-fast` | Immediately halt pipeline on first error instead of logging & continuing | `False` |
 | `--keep-failed-intermediates` | Preserve temporary directory when a subject fails (for debugging) | `False` |
+
+---
+
+## Model Training Workflow (nnU-Net v2)
+
+The model training workflow provides end-to-end orchestration for `Dataset101_FLAIR`, `Dataset102_T1`, and `Dataset103_Fusion` models using nnU-Net v2. Detailed documentation is available in [docs/training.md](docs/training.md).
+
+> [!IMPORTANT]
+> The current dataset was preprocessed with `--limit 1` for smoke testing. The training workflow enforces a **hard cohort size guard** (minimum 5 valid cases) and safely blocks 5-fold cross-validation until the full dataset is preprocessed.
+
+### 1. Environment & Dataset Check
+
+Validate Python, PyTorch, CUDA, nnU-Net package status, path resolution, and dataset metadata without running training:
+
+```powershell
+python .\scripts\train.py --check
+python .\scripts\train.py --check --dataset all
+```
+
+### 2. Experiment Preparation & Fingerprinting
+
+Extract dataset fingerprints and run nnU-Net experiment planning after completing full preprocessing:
+
+```powershell
+python .\scripts\train.py --prepare --dataset 101
+python .\scripts\train.py --prepare --dataset all
+```
+
+### 3. Single-Fold & 5-Fold Training
+
+Train models sequentially on available GPU hardware:
+
+```powershell
+# Train Fold 0 of FLAIR model
+python .\scripts\train.py --dataset 101 --fold 0
+
+# Train 5-fold cross validation on FLAIR model
+python .\scripts\train.py --dataset 101 --all-folds
+
+# Train 5-fold cross validation across all three datasets (15 runs total)
+python .\scripts\train.py --dataset all --all-folds
+```
+
+### 4. Resuming Training
+
+Resume interrupted training from the latest checkpoint (`--c` flag):
+
+```powershell
+python .\scripts\train.py --dataset 101 --fold 0 --continue
+```
 
 ---
 
