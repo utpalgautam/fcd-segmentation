@@ -366,10 +366,10 @@ python .\scripts\train.py --prepare --dataset all
 
 ### 3. Single-Fold & 5-Fold Training
 
-Train models sequentially on available GPU hardware:
+Train models sequentially on available GPU hardware. By default, training runs with the calibrated **100-epoch trainer** (`nnUNetTrainer_100epochs` configured in `configs/training.yaml`):
 
 ```powershell
-# Train Fold 0 of FLAIR model
+# Train Fold 0 of FLAIR model (runs for 100 epochs by default)
 python .\scripts\train.py --dataset 101 --fold 0
 
 # Train 5-fold cross validation on FLAIR model
@@ -377,6 +377,9 @@ python .\scripts\train.py --dataset 101 --all-folds
 
 # Train 5-fold cross validation across all three datasets (15 runs total)
 python .\scripts\train.py --dataset all --all-folds
+
+# Optional: override trainer if desired
+python .\scripts\train.py --dataset 101 --fold 0 --trainer nnUNetTrainer
 ```
 
 ### 4. Resuming Training

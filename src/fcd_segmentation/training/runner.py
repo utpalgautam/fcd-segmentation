@@ -59,6 +59,19 @@ def run_command(
     """
     env = os.environ.copy()
     env.update(paths.to_env_dict())
+    # On Windows, setting nnUNet_n_proc_DA to 0 prevents multiprocessing worker crashes with blosc2
+    if sys.platform == "win32" and "nnUNet_n_proc_DA" not in env:
+        env["nnUNet_n_proc_DA"] = "0"
+
+    # Register project training directory so custom trainers in fcd_segmentation are discovered
+    training_pkg_dir = str(Path(__file__).parent.resolve())
+    existing_ext = env.get("nnUNet_extTrainer", "")
+    if existing_ext:
+        if training_pkg_dir not in existing_ext.split(os.pathsep):
+            env["nnUNet_extTrainer"] = f"{training_pkg_dir}{os.pathsep}{existing_ext}"
+    else:
+        env["nnUNet_extTrainer"] = training_pkg_dir
+
     if extra_env:
         env.update(extra_env)
 

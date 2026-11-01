@@ -21,7 +21,7 @@ datasets:
   103: Dataset103_Fusion
 
 configuration: 3d_fullres
-trainer: nnUNetTrainer
+trainer: nnUNetTrainer_100epochs
 plans: nnUNetPlans
 min_cases_for_five_fold: 5
 keep_going: false

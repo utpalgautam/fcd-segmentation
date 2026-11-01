@@ -106,8 +106,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--trainer",
-        default="nnUNetTrainer",
-        help="Custom trainer class name.",
+        default=None,
+        help="Custom trainer class name (default from config: nnUNetTrainer_100epochs).",
     )
     parser.add_argument(
         "--plans",
@@ -219,8 +219,8 @@ def main() -> int:
         keep_going=args.keep_going,
         device=args.device
         or (config_data.get("device") if config_data.get("device") != "auto" else None),
-        trainer=args.trainer,
-        plans=args.plans,
+        trainer=args.trainer or config_data.get("trainer", "nnUNetTrainer_100epochs"),
+        plans=args.plans or config_data.get("plans"),
         clean_preprocess=args.clean,
         paths=paths,
         min_cases_guard=args.min_cases_guard,
