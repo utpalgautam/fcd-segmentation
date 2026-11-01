@@ -21,6 +21,7 @@ def normalize_intensity(
     mask: ArrayLike | None = None,
     clip_percentiles: Sequence[float] | None = (0.5, 99.5),
     eps: float = 1e-8,
+    allow_constant: bool = False,
 ) -> NDArray[np.float32]:
     """
     Normalize MRI intensities using foreground-based z-score normalization.
@@ -38,6 +39,9 @@ def normalize_intensity(
         Use None to disable clipping.
     eps:
         Minimum standard deviation accepted for normalization.
+    allow_constant:
+        If True, returns an all-zero array without error when foreground is
+        empty or has near-zero variance. If False, raises ValueError.
 
     Returns
     -------
@@ -87,12 +91,17 @@ def normalize_intensity(
         foreground = (supplied_mask != 0) & finite_mask
 
     if not np.any(foreground):
+        if allow_constant:
+            return np.zeros(array.shape, dtype=np.float32)
         raise ValueError("Cannot normalize an MRI volume with no foreground voxels.")
 
     foreground_values = output[foreground]
 
     if not np.all(np.isfinite(foreground_values)):
-        raise ValueError("Foreground contains non-finite values.")
+        if allow_constant:
+            foreground_values = np.nan_to_num(foreground_values, nan=0.0, posinf=0.0, neginf=0.0)
+        else:
+            raise ValueError("Foreground contains non-finite values.")
 
     # Clip extreme foreground intensities if requested.
     if clip_percentiles is not None:
@@ -128,9 +137,13 @@ def normalize_intensity(
     std = float(np.std(foreground_values, dtype=np.float64))
 
     if not np.isfinite(mean) or not np.isfinite(std):
+        if allow_constant:
+            return np.zeros(array.shape, dtype=np.float32)
         raise ValueError("Foreground statistics are not finite.")
 
     if std < eps:
+        if allow_constant:
+            return np.zeros(array.shape, dtype=np.float32)
         raise ValueError(
             "Foreground intensity standard deviation is too small "
             "for reliable z-score normalization."

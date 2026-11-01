@@ -312,6 +312,8 @@ def test_find_hd_bet_executable_returns_path(monkeypatch):
 
 def test_find_hd_bet_executable_raises_when_missing(monkeypatch):
     monkeypatch.setattr(ss.shutil, "which", lambda name: None)
+    # Also block the venv-candidate fallback so RuntimeError is guaranteed
+    monkeypatch.setattr(ss.os, "access", lambda path, mode: False)
 
     with pytest.raises(RuntimeError):
         ss._find_hd_bet_executable()

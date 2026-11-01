@@ -3,8 +3,10 @@ from __future__ import annotations
 import csv
 import html
 import json
+import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -36,6 +38,11 @@ MANIFEST_NAME = "hd_bet_manifest.json"
 def _find_hd_bet_executable() -> str:
     """Return the installed HD-BET executable or raise an error."""
     executable = shutil.which("hd-bet")
+
+    if executable is None:
+        venv_candidate = Path(sys.executable).parent / "hd-bet"
+        if venv_candidate.is_file() and os.access(venv_candidate, os.X_OK):
+            executable = str(venv_candidate)
 
     if executable is None:
         raise RuntimeError(
@@ -156,17 +163,18 @@ def _copy_nifti(
 # ---------------------------------------------------------------------
 
 def run_hd_bet(
-
-        
     input_path: str | Path,
     output_dir: str | Path,
     subject_id: str | None = None,
     device: str = "cuda",
     tta: bool = True,
     overwrite: bool = False,
+    modality: str = "FLAIR",
+    output_image_path: str | Path | None = None,
+    output_mask_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """
-    Run HD-BET 2.0.1 on one FLAIR scan.
+    Run HD-BET 2.0.1 on one FLAIR or T1 scan.
 
     Returns a dictionary containing:
         subject_id
@@ -174,6 +182,7 @@ def run_hd_bet(
         skullstripped_path
         brain_mask_path
         device
+        modality
         status
 
     HD-BET is the only brain-extraction method used here.
@@ -200,12 +209,20 @@ def run_hd_bet(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    stripped_path = (
-        output_dir / f"{subject_id}_FLAIR_skullstripped.nii.gz"
-    )
-    brain_mask_path = (
-        output_dir / f"{subject_id}_brain_mask.nii.gz"
-    )
+    modality_upper = modality.upper()
+    if output_image_path is not None:
+        stripped_path = Path(output_image_path).resolve()
+    elif modality_upper == "T1":
+        stripped_path = output_dir / f"{subject_id}_T1_skullstripped.nii.gz"
+    else:
+        stripped_path = output_dir / f"{subject_id}_FLAIR_skullstripped.nii.gz"
+
+    if output_mask_path is not None:
+        brain_mask_path = Path(output_mask_path).resolve()
+    elif modality_upper == "T1":
+        brain_mask_path = output_dir / f"{subject_id}_T1_brain_mask.nii.gz"
+    else:
+        brain_mask_path = output_dir / f"{subject_id}_brain_mask.nii.gz"
 
     if not overwrite:
         existing = [
@@ -439,9 +456,11 @@ def create_visual_qc(
     original_flair_path: str | Path,
     skullstripped_path: str | Path,
     brain_mask_path: str | Path,
-    output_png: str | Path,
+    output_png: str | Path | None = None,
     roi_path: str | Path | None = None,
     subject_id: str | None = None,
+    modality: str = "FLAIR",
+    return_base64: bool = True,
 ) -> dict[str, Any]:
     """
     Create a six-panel QC image.
@@ -457,10 +476,10 @@ def create_visual_qc(
 
     Red contour:
         FCD lesion ROI boundary, when available.
-
-    The ROI is drawn on both rows to make it easier to assess whether
-    the brain mask retains the lesion region.
     """
+    import base64
+    import io
+
     import matplotlib
 
     matplotlib.use("Agg")
@@ -469,7 +488,6 @@ def create_visual_qc(
     original_flair_path = Path(original_flair_path)
     skullstripped_path = Path(skullstripped_path)
     brain_mask_path = Path(brain_mask_path)
-    output_png = Path(output_png)
 
     original_image = _load_image(original_flair_path)
     stripped_image = _load_image(skullstripped_path)
@@ -477,12 +495,13 @@ def create_visual_qc(
 
     if not _same_geometry(original_image, stripped_image):
         raise ValueError(
-            "Original and skull-stripped FLAIR geometry do not match."
+            f"Original and skull-stripped {modality} geometry do not match."
         )
 
     if not _same_geometry(stripped_image, mask_image):
         raise ValueError(
-            "Skull-stripped image and brain-mask geometry do not match."
+            f"Skull-stripped image and brain-mask geometry do not match "
+            f"(modality: {modality})."
         )
 
     original = _image_data(original_image)
@@ -498,8 +517,6 @@ def create_visual_qc(
         )
 
     x, y, z = _choose_slices(brain_mask, roi_mask)
-
-    output_png.parent.mkdir(parents=True, exist_ok=True)
 
     # Transpose the slices for consistent display with the NIfTI
     # voxel-axis convention.
@@ -540,7 +557,7 @@ def create_visual_qc(
         _display_slice(
             axes[0, column],
             original_slice,
-            f"Original FLAIR — {title}",
+            f"Original {modality} — {title}",
             mask_slice=mask_slice,
             roi_slice=roi_slice,
         )
@@ -548,21 +565,32 @@ def create_visual_qc(
         _display_slice(
             axes[1, column],
             stripped_slice,
-            f"Skull-stripped FLAIR — {title}",
+            f"Skull-stripped {modality} — {title}",
             mask_slice=mask_slice,
             roi_slice=roi_slice,
         )
 
     fig.suptitle(
-        f"HD-BET Visual QC — {subject_id or original_flair_path.stem}",
+        f"HD-BET Visual QC ({modality}) — {subject_id or original_flair_path.stem}",
         fontsize=14,
     )
 
-    fig.savefig(
-        output_png,
-        dpi=160,
-        bbox_inches="tight",
-    )
+    base64_str = ""
+    if return_base64:
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=120, bbox_inches="tight")
+        buf.seek(0)
+        base64_str = "data:image/png;base64," + base64.b64encode(buf.read()).decode("ascii")
+        buf.close()
+
+    if output_png is not None:
+        p_out = Path(output_png)
+        p_out.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(
+            p_out,
+            dpi=160,
+            bbox_inches="tight",
+        )
     plt.close(fig)
 
     brain_voxels = int(brain_mask.sum())
@@ -600,7 +628,9 @@ def create_visual_qc(
 
     return {
         "subject_id": subject_id or original_flair_path.stem,
-        "qc_image": str(output_png),
+        "status": "success",
+        "qc_image": str(output_png) if output_png else "",
+        "base64_image": base64_str,
         "brain_voxels": brain_voxels,
         "brain_fraction": brain_fraction,
         "stripped_nonzero_outside_mask": outside_nonzero,
@@ -679,16 +709,18 @@ def generate_qc_index(
             )
             continue
 
-        qc_path = Path(str(record.get("qc_image", "")))
-
-        try:
-            relative_image = qc_path.resolve().relative_to(
-                output_dir.resolve()
-            ).as_posix()
-        except ValueError:
-            relative_image = f"images/{qc_path.name}"
-
-        relative_image = html.escape(relative_image)
+        base64_data = record.get("base64_image")
+        if base64_data:
+            img_src = base64_data
+        else:
+            qc_path = Path(str(record.get("qc_image", "")))
+            try:
+                relative_image = qc_path.resolve().relative_to(
+                    output_dir.resolve()
+                ).as_posix()
+            except Exception:
+                relative_image = f"images/{qc_path.name}"
+            img_src = html.escape(relative_image)
 
         css_class = "review" if qc_status == "REVIEW" else "pass"
 
@@ -714,9 +746,7 @@ def generate_qc_index(
               <p><strong>Brain fraction:</strong> {brain_fraction_text}</p>
               <p><strong>ROI inside brain mask:</strong> {roi_fraction_text}</p>
               <p><strong>Review flags:</strong> {flags or "None"}</p>
-              <a href="{relative_image}" target="_blank">
-                <img src="{relative_image}" alt="QC image for {subject_id}">
-              </a>
+              <img src="{img_src}" alt="QC image for {subject_id}">
             </section>
             """
         )

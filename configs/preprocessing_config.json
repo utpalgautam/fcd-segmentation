@@ -1,0 +1,54 @@
+{
+  "paths": {
+    "raw_data_dir": "data/raw/dataset",
+    "processed_data_dir": "data/processed",
+    "reports_dir": "outputs/preprocessing",
+    "participants_tsv": "data/raw/dataset/participants.tsv"
+  },
+  "datasets": {
+    "flair_id": "Dataset101_FLAIR",
+    "t1_id": "Dataset102_T1",
+    "fusion_id": "Dataset103_Fusion",
+    "file_ending": ".nii.gz"
+  },
+  "reference_modality": "FLAIR",
+  "skull_stripping": {
+    "enabled": true,
+    "backend": "hd-bet",
+    "device": "cuda",
+    "tta": false
+  },
+  "registration": {
+    "enabled": true,
+    "backend": "simpleitk",
+    "method": "rigid",
+    "fixed_modality": "FLAIR",
+    "moving_modality": "T1",
+    "number_of_iterations": 200,
+    "number_of_bins": 50,
+    "sampling_percentage": 0.20
+  },
+  "normalization": {
+    "method": "foreground_zscore",
+    "clip_percentiles": [0.5, 99.5],
+    "eps": 1e-8
+  },
+  "label": {
+    "expected_lesion_value": 1,
+    "mapping": {
+      "background": 0,
+      "lesion": 1
+    }
+  },
+  "splits": {
+    "policy": "participants_tsv",
+    "held_out_target": "imagesTr"
+  },
+  "execution": {
+    "resume": false,
+    "overwrite": false,
+    "keep_failed_intermediates": false,
+    "fail_fast": false,
+    "limit": null
+  }
+}
