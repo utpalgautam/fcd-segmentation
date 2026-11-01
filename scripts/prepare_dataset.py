@@ -132,10 +132,10 @@ def main() -> int:
         print(f"Attempted: {summary.get('attempted', 0)}")
         print(f"Passed:    {summary.get('passed', 0)}")
         print(f"Warned:    {summary.get('warned', 0)}")
-        print(f"Skipped:   {summary.get('skipped', 0)}")
-        print(f"Failed:    {summary.get('failed', 0)}")
-        print(f"Reports:   {args.reports / 'qc'}")
-        print(f"Manifests: {args.reports / 'manifests'}")
+        qc_out = results.get("qc_dir") or (args.reports if args.reports.name == "qc" else args.reports / "qc")
+        mf_out = results.get("manifests_dir") or (args.reports.parent / "manifests" if args.reports.name == "qc" else args.reports / "manifests")
+        print(f"Reports:   {qc_out}")
+        print(f"Manifests: {mf_out}")
         print("=" * 60)
 
         return 1 if summary.get("failed", 0) > 0 and args.fail_fast else 0

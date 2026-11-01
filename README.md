@@ -237,12 +237,12 @@ Run the complete pipeline on just 2 subjects to verify HD-BET, registration, and
 
 **Linux:**
 ```bash
-python scripts/prepare_dataset.py --limit 2 --reports outputs/preprocessing/qc
+python scripts/prepare_dataset.py --limit 2 --reports outputs/preprocessing
 ```
 
 **Windows (PowerShell):**
 ```powershell
-python scripts\prepare_dataset.py --limit 2 --reports outputs\preprocessing\qc
+python scripts\prepare_dataset.py --limit 2 --reports outputs\preprocessing
 ```
 
 ---
@@ -256,7 +256,7 @@ Run the end-to-end preprocessing pipeline on the entire cohort using GPU acceler
 python scripts/prepare_dataset.py \
     --input data/raw/dataset \
     --output data/processed \
-    --reports outputs/preprocessing/qc \
+    --reports outputs/preprocessing \
     --config configs/preprocessing_config.json \
     --device cuda \
     --resume
@@ -265,7 +265,7 @@ python scripts/prepare_dataset.py \
 python scripts/prepare_dataset.py \
     --input data/raw/dataset \
     --output data/processed \
-    --reports outputs/preprocessing/qc \
+    --reports outputs/preprocessing \
     --device cpu \
     --resume
 
@@ -273,7 +273,7 @@ python scripts/prepare_dataset.py \
 python scripts/prepare_dataset.py \
     --input data/raw/dataset \
     --output data/processed \
-    --reports outputs/preprocessing/qc \
+    --reports outputs/preprocessing \
     --overwrite
 ```
 
@@ -287,7 +287,7 @@ python scripts/prepare_dataset.py \
 python scripts\prepare_dataset.py `
     --input data\raw\dataset `
     --output data\processed `
-    --reports outputs\preprocessing\qc `
+    --reports outputs\preprocessing `
     --config configs\preprocessing_config.json `
     --device cuda `
     --resume
@@ -296,7 +296,7 @@ python scripts\prepare_dataset.py `
 python scripts\prepare_dataset.py `
     --input data\raw\dataset `
     --output data\processed `
-    --reports outputs\preprocessing\qc `
+    --reports outputs\preprocessing `
     --device cpu `
     --resume
 
@@ -304,13 +304,13 @@ python scripts\prepare_dataset.py `
 python scripts\prepare_dataset.py `
     --input data\raw\dataset `
     --output data\processed `
-    --reports outputs\preprocessing\qc `
+    --reports outputs\preprocessing `
     --overwrite
 ```
 
 **Command Prompt (`cmd.exe`):**
 ```cmd
-python scripts\prepare_dataset.py --input data\raw\dataset --output data\processed --reports outputs\preprocessing\qc --config configs\preprocessing_config.json --device cuda --resume
+python scripts\prepare_dataset.py --input data\raw\dataset --output data\processed --reports outputs\preprocessing --config configs\preprocessing_config.json --device cuda --resume
 ```
 
 ---

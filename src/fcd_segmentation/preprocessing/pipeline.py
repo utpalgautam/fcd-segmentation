@@ -458,9 +458,15 @@ def run_pipeline(
     if participants_tsv:
         participants_tsv = Path(participants_tsv).resolve()
 
-    qc_dir = reports_root / "qc"
-    manifests_dir = reports_root / "manifests"
-    logs_dir = reports_root / "logs"
+    # If user provided a path ending in 'qc', treat that as qc_dir directly
+    if reports_root.name == "qc":
+        qc_dir = reports_root
+        manifests_dir = reports_root.parent / "manifests"
+        logs_dir = reports_root.parent / "logs"
+    else:
+        qc_dir = reports_root / "qc"
+        manifests_dir = reports_root / "manifests"
+        logs_dir = reports_root / "logs"
 
     qc_dir.mkdir(parents=True, exist_ok=True)
     manifests_dir.mkdir(parents=True, exist_ok=True)
@@ -651,6 +657,8 @@ def run_pipeline(
     manifest_data = {
         "config_hash": config_hash,
         "config": config,
+        "qc_dir": str(qc_dir),
+        "manifests_dir": str(manifests_dir),
         "inventory_summary": inventory_summary,
         "split_assignments": split_assignments,
         "results": pipeline_results,
