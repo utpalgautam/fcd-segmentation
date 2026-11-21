@@ -66,6 +66,40 @@ class nnUNetTrainer_50epochs(FCDnnUNetTrainer_50epochs):
     pass
 
 
+class FCDnnUNetTrainer_5epochs(nnUNetTrainer):
+    """5 epochs variant for rapid verification and smoke testing."""
+
+    def __init__(
+        self,
+        plans: dict,
+        configuration: str,
+        fold: int,
+        dataset_json: dict,
+        device: torch.device = torch.device("cuda"),
+    ):
+        super().__init__(plans, configuration, fold, dataset_json, device)
+        self.num_epochs = 5
+        self.initial_lr = 1e-3
+        self.save_every = 1
+
+
+class FCDnnUNetTrainer_1epoch(nnUNetTrainer):
+    """1 epoch variant for smoke testing the end-to-end training pipeline."""
+
+    def __init__(
+        self,
+        plans: dict,
+        configuration: str,
+        fold: int,
+        dataset_json: dict,
+        device: torch.device = torch.device("cuda"),
+    ):
+        super().__init__(plans, configuration, fold, dataset_json, device)
+        self.num_epochs = 1
+        self.initial_lr = 1e-3
+        self.save_every = 1
+
+
 def verify_trainer_resolution(
     trainer_name: str,
     allow_builtin: bool = False,
@@ -144,5 +178,7 @@ __all__ = [
     "nnUNetTrainer_100epochs",
     "FCDnnUNetTrainer_50epochs",
     "nnUNetTrainer_50epochs",
+    "FCDnnUNetTrainer_5epochs",
+    "FCDnnUNetTrainer_1epoch",
     "verify_trainer_resolution",
 ]

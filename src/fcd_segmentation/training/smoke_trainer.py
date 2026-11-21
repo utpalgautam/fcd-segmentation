@@ -22,10 +22,10 @@ class FCDnnUNetTrainer_Smoke3epochs(FCDnnUNetTrainer_100epochs):
         else:
             super().__init__(plans, configuration, fold, dataset_json, device)
 
-        self.num_epochs = 100
+        self.num_epochs = 3
         self.initial_lr = 0.01
         self.weight_decay = 3e-5
-        self.save_every = 25
+        self.save_every = 1
 
     def configure_optimizers(self):
         optimizer = torch.optim.SGD(
