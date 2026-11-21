@@ -52,6 +52,7 @@ def run_command(
     log_file: Path | None = None,
     extra_env: dict[str, str] | None = None,
     cwd: Path | None = None,
+    stream_output: bool = True,
 ) -> CommandResult:
     """Execute a command via subprocess.run with argument list, passing nnU-Net env variables.
 
@@ -59,6 +60,8 @@ def run_command(
     """
     env = os.environ.copy()
     env.update(paths.to_env_dict())
+    if "PYTORCH_CUDA_ALLOC_CONF" not in env:
+        env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     # On Windows, setting nnUNet_n_proc_DA to 0 prevents multiprocessing worker crashes with blosc2
     if sys.platform == "win32" and "nnUNet_n_proc_DA" not in env:
         env["nnUNet_n_proc_DA"] = "0"
@@ -87,14 +90,40 @@ def run_command(
     logger.debug("Effective environment: %s", paths.to_env_dict())
 
     try:
-        proc = subprocess.run(
-            str_cmd,
-            capture_output=True,
-            text=True,
-            env=env,
-            cwd=str(cwd or paths.project_root),
-            check=False,
-        )
+        # Stream live output to the console when running in an interactive terminal
+        if stream_output and sys.stdout.isatty():
+            proc_popen = subprocess.Popen(
+                str_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                env=env,
+                cwd=str(cwd or paths.project_root),
+            )
+            stdout_lines: list[str] = []
+            if proc_popen.stdout is not None:
+                for line in proc_popen.stdout:
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+                    stdout_lines.append(line)
+            proc_popen.wait()
+            stdout_text = "".join(stdout_lines)
+            stderr_text = ""
+            exit_code = proc_popen.returncode
+        else:
+            proc = subprocess.run(
+                str_cmd,
+                capture_output=True,
+                text=True,
+                env=env,
+                cwd=str(cwd or paths.project_root),
+                check=False,
+            )
+            stdout_text = proc.stdout
+            stderr_text = proc.stderr
+            exit_code = proc.returncode
+
         t1 = time.time()
         end_dt = datetime.now(UTC)
         end_time_iso = end_dt.isoformat()
@@ -102,9 +131,9 @@ def run_command(
 
         result = CommandResult(
             command=str_cmd,
-            exit_code=proc.returncode,
-            stdout=proc.stdout,
-            stderr=proc.stderr,
+            exit_code=exit_code,
+            stdout=stdout_text,
+            stderr=stderr_text,
             duration_seconds=duration,
             start_time=start_time_iso,
             end_time=end_time_iso,
@@ -116,20 +145,20 @@ def run_command(
             with log_file.open("a", encoding="utf-8") as f:
                 f.write(f"\n--- Command: {cmd_str_repr} ---\n")
                 f.write(
-                    f"Start: {start_time_iso} | End: {end_time_iso} | Duration: {duration:.2f}s | Exit: {proc.returncode}\n"
+                    f"Start: {start_time_iso} | End: {end_time_iso} | Duration: {duration:.2f}s | Exit: {exit_code}\n"
                 )
                 f.write("=== STDOUT ===\n")
-                f.write(proc.stdout)
+                f.write(stdout_text)
                 f.write("\n=== STDERR ===\n")
-                f.write(proc.stderr)
+                f.write(stderr_text)
                 f.write("\n")
 
-        if proc.returncode != 0:
+        if exit_code != 0:
             logger.error(
                 "Command failed with exit code %d: %s\nStderr: %s",
-                proc.returncode,
+                exit_code,
                 cmd_str_repr,
-                proc.stderr.strip() or proc.stdout.strip(),
+                stderr_text.strip() or stdout_text.strip(),
             )
         else:
             logger.info("Command completed successfully in %.2fs", duration)
