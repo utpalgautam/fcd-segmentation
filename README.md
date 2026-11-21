@@ -1,34 +1,43 @@
-# FCD MRI Segmentation: Complete Preprocessing Pipeline & nnU-Net Datasets
+# FCD MRI Segmentation: Complete Preprocessing, Training & Evaluation Pipeline
 
-Cross-platform research pipeline for focal cortical dysplasia (FCD) lesion segmentation using multi-modal structural MRI (T1-weighted and FLAIR).
+[![Tests](https://img.shields.io/badge/tests-243%20passed-brightgreen.svg)]()
+[![Python](https://img.shields.io/badge/python-3.12-blue.svg)]()
+[![nnU-Net](https://img.shields.io/badge/nnU--Net-v2-orange.svg)]()
 
-This repository provides an automated, auditable, and fully validated end-to-end preprocessing pipeline that converts raw BIDS/cohort MRI scans into three standardized **nnU-Net v2** datasets:
-1. **`Dataset101_FLAIR`** — Skull-stripped, normalized FLAIR images (1 channel: `_0000.nii.gz`).
-2. **`Dataset102_T1`** — Skull-stripped, rigid-registered, and resampled T1w images mapped onto the FLAIR voxel grid (1 channel: `_0000.nii.gz`).
-3. **`Dataset103_Fusion`** — Multi-channel paired inputs on the exact same anatomical grid (`channel 0000` = FLAIR, `channel 0001` = T1).
+Cross-platform research pipeline for focal cortical dysplasia (FCD) lesion segmentation using multimodal structural MRI (T1-weighted and FLAIR).
+
+This repository provides an automated, auditable, and fully validated end-to-end medical image computing pipeline that covers the entire lifecycle:
+1. **Raw BIDS Data Ingestion**: Automated OpenNeuro dataset retrieval (`ds004199`) and participant manifest validation.
+2. **Preprocessing & Geometric Alignment**: Brain extraction via HD-BET, rigid registration of T1 onto FLAIR reference space, discrete lesion ROI alignment, and masked intensity normalization.
+3. **nnU-Net v2 Dataset Packaging**: Assembly of three standardized datasets:
+   - **`Dataset101_FLAIR`** — Skull-stripped, normalized FLAIR images (1 channel: `_0000.nii.gz`).
+   - **`Dataset102_T1`** — Skull-stripped, rigid-registered, and resampled T1w images mapped onto FLAIR voxel grid (1 channel: `_0000.nii.gz`).
+   - **`Dataset103_Fusion`** — Multi-channel paired inputs on the exact same anatomical grid (`channel 0000` = FLAIR, `channel 0001` = T1).
+4. **Leak-Free 5-Fold Stratified Cross-Validation**: Deterministic cohort partitioning (stratified by FCD vs. HC) with strict held-out test cohort isolation.
+5. **Lab-Ready Training & Preflight**: Preflight system diagnostics, custom calibrated 100-epoch nnU-Net trainer (`FCDnnUNetTrainer_100epochs`), and 5-fold training execution.
+6. **Inference & Scientific Evaluation**: Fold-aware validation, held-out test inference, and robust metric reporting (Dice, IoU, Sensitivity, Specificity, Precision, and finite/infinite HD95 statistics).
 
 ---
 
 ## Table of Contents
 
 - [Pipeline Overview & Architecture](#pipeline-overview--architecture)
-- [Project Status](#project-status)
+- [Dataset Summary & Cohorts](#dataset-summary--cohorts)
+- [Project Status & Implemented Features](#project-status--implemented-features)
 - [Repository Layout](#repository-layout)
 - [Prerequisites](#prerequisites)
 - [Installation Guide](#installation-guide)
   - [Linux (Ubuntu / Debian)](#linux-installation)
-  - [Windows (PowerShell / Command Prompt)](#windows-installation)
-- [Running the Preprocessing Pipeline](#running-the-preprocessing-pipeline)
-  - [Quick Dry Run (Inventory Only)](#1-quick-dry-run-inventory-only)
-  - [Smoke Test on a Subset](#2-smoke-test-on-a-subset)
-  - [Full Pipeline Execution (Linux)](#3-full-pipeline-execution-linux)
-  - [Full Pipeline Execution (Windows)](#4-full-pipeline-execution-windows)
-  - [CLI Flags & Options Reference](#cli-flags--options-reference)
-- [Model Training Workflow (nnU-Net v2)](#model-training-workflow-nnu-net-v2)
-  - [Environment & Dataset Check](#1-environment--dataset-check)
-  - [Experiment Preparation & Fingerprinting](#2-experiment-preparation--fingerprinting)
-  - [Single-Fold & 5-Fold Training](#3-single-fold--5-fold-training)
-  - [Resuming Training](#4-resuming-training)
+  - [Windows (PowerShell)](#windows-installation)
+- [Step-by-Step Pipeline Execution](#step-by-step-pipeline-execution)
+  - [Step 1: Download Raw OpenNeuro Dataset](#step-1-download-raw-openneuro-dataset)
+  - [Step 2: Run Preprocessing Pipeline](#step-2-run-preprocessing-pipeline)
+  - [Step 3: Preflight System & Environment Check](#step-3-preflight-system--environment-check)
+  - [Step 4: Generate Stratified 5-Fold Cross-Validation Splits](#step-4-generate-stratified-5-fold-cross-validation-splits)
+  - [Step 5: nnU-Net Experiment Planning & Preprocessing](#step-5-nnu-net-experiment-planning--preprocessing)
+  - [Step 6: Train Models](#step-6-train-models)
+  - [Step 7: Model Inference / Predictions](#step-7-model-inference--predictions)
+  - [Step 8: Metric Evaluation & Scientific Reporting](#step-8-metric-evaluation--scientific-reporting)
 - [Quality Control (QC) Reports](#quality-control-qc-reports)
 - [Testing & Validation](#testing--validation)
 - [Troubleshooting & Common Issues](#troubleshooting--common-issues)
@@ -42,7 +51,7 @@ This repository provides an automated, auditable, and fully validated end-to-end
 Raw Scans (data/raw/dataset/sub-XXXXX/anat/)
 ├── T1-weighted (moving)
 ├── FLAIR (reference)
-└── FLAIR_roi (ground truth lesion mask)
+└── FLAIR_roi (ground-truth lesion mask, FCD only)
              │
              ▼
    [ 1. Discovery & Validation ]
@@ -55,11 +64,10 @@ Raw Scans (data/raw/dataset/sub-XXXXX/anat/)
    • T1w skull stripping -> T1_brainmask.nii.gz
              │
              ▼
-   [ 3. Rigid Registration (T1 -> FLAIR Grid) ]
-   • SimpleITK Euler3D / Rigid registration
-   • Mutual information metric optimization
+   [ 3. Rigid Registration (T1 -> FLAIR Reference Grid) ]
+   • SimpleITK Euler3D / Rigid registration with Mattes Mutual Information
    • Resampling moving T1 directly into FLAIR grid space
-   • Preservation of discrete integer labels
+   • Preserving discrete integer labels (FLAIR ROI is untouched)
              │
              ▼
    [ 4. Intensity Normalization ]
@@ -71,37 +79,59 @@ Raw Scans (data/raw/dataset/sub-XXXXX/anat/)
    [ 5. nnU-Net v2 Dataset Packaging & Atomic Delivery ]
    • Dataset101_FLAIR   (FLAIR-only)
    • Dataset102_T1      (Registered T1-only)
-   • Dataset103_Fusion  (Channel 0: FLAclearIR, Channel 1: T1)
-   • Shared subject splits (subject_splits.json) across all 3 datasets
+   • Dataset103_Fusion  (Channel 0: FLAIR, Channel 1: T1)
+   • 142 Training cases (57 FCD + 85 HC) in imagesTr / labelsTr
+   • 28 Held-out Test cases (28 FCD) in imagesTs / labelsTs
              │
              ▼
-   [ 6. Self-Contained HTML QC Reports ]
-   • input_inventory.html
-   • skull_stripping_FLAIR.html
-   • skull_stripping_T1.html
-   • registration_T1_to_FLAIR.html (with red ROI contour overlay)
-   • final_dataset_qc.html
+   [ 6. Model Training, Inference & Evaluation ]
+   • Stratified 5-fold cross-validation with exact complement invariants
+   • FCDnnUNetTrainer_100epochs (calibrated 100-epoch custom trainer)
+   • Fold-aware validation evaluation (labelsTr) & held-out test evaluation (labelsTs)
+   • Scientific HD95 reporting (finite-only mean + explicit infinite-case counts)
 ```
 
 ### Critical Geometric Reference Contract
-- **FLAIR is the definitive reference space.** Ground-truth lesion masks (`*_FLAIR_roi.nii.gz`) are delineated on FLAIR space.
-- T1w is registered to FLAIR so that both modalities share identical dimensions, voxel spacing, origin, and coordinate axes.
-- Healthy Control (HC) subjects with no lesion masks are correctly discovered and included in training splits with zero-filled background masks.
+- **FLAIR is the definitive spatial reference.** Ground-truth lesion masks (`*_FLAIR_roi.nii.gz`) are delineated natively on FLAIR space.
+- T1w is rigidly registered and resampled into the FLAIR reference geometry so both modalities share identical dimensions, voxel spacing, origin, and coordinate axes.
+- **The lesion ROI is NEVER transformed** by the T1-to-FLAIR registration matrix, completely eliminating spatial misalignment artifacts.
+- Healthy Control (HC) subjects with no lesion masks are correctly ingested with verified zero-filled background masks.
 
 ---
 
-## Project Status
+## Dataset Summary & Cohorts
 
-| Component | Status | Verification / Description |
+The cohort comprises **170 subjects** from OpenNeuro dataset `ds004199`:
+
+| Cohort | Total Cases | Training / CV Set (`imagesTr`) | Held-out Test Set (`imagesTs`) | Lesion Label |
+|---|---|---|---|---|
+| **FCD (Focal Cortical Dysplasia)** | 85 | 57 | 28 | Delineated binary mask (1 = lesion, 0 = background) |
+| **Healthy Controls (HC)** | 85 | 85 | 0 | Blank background mask (all zeros) |
+| **Total** | **170** | **142** | **28** | — |
+
+- **Training cohort**: 142 subjects (57 FCD + 85 HC), partitioned into 5 stratified cross-validation folds (each fold contains 113–114 train cases and 28–29 validation cases).
+- **Test cohort**: 28 FCD subjects held out strictly for independent final evaluation; never exposed during cross-validation or training.
+
+---
+
+## Project Status & Implemented Features
+
+| Component | Status | Verification & Capabilities |
 |---|---|---|
-| **Discovery & Inventory** | **Complete** | Discovers paired T1w, FLAIR, and ROI masks; handles both FCD and HC cohorts |
-| **HD-BET Skull Stripping** | **Complete** | Processes FLAIR and T1 with brain-mask geometry validation and auto-fallback |
+| **Dataset Downloader** | **Complete** | Automated download and participant check of OpenNeuro `ds004199` |
+| **BIDS Discovery & Pairing** | **Complete** | Validates paired T1w, FLAIR, and ROI masks; handles both FCD and HC cohorts |
+| **HD-BET Skull Stripping** | **Complete** | GPU/CPU skull stripping with brain-mask geometry verification and auto-fallback |
 | **T1-to-FLAIR Registration** | **Complete** | SimpleITK rigid registration with mutual information; resamples T1 to FLAIR grid |
-| **Foreground Normalization** | **Complete** | Robust masked z-score normalization with percentile clipping ($0.5\% - 99.5\%$) |
+| **Foreground Normalization** | **Complete** | Masked z-score normalization with percentile clipping ($0.5\% - 99.5\%$) |
 | **nnU-Net v2 Dataset Assembly** | **Complete** | Generates `Dataset101_FLAIR`, `Dataset102_T1`, and `Dataset103_Fusion` |
-| **nnU-Net v2 Model Training** | **Complete** | Environment checks, validation, cohort guards, preparation, and 5-fold CV orchestration |
+| **Cross-Validation Splits** | **Complete** | Stratified 5-fold CV (`seed=42`) with duplicate rejection & complement invariants |
+| **Preflight System Check** | **Complete** | Comprehensive environment, GPU/CUDA, dependency, and split verification |
+| **Custom nnU-Net Trainer** | **Complete** | `FCDnnUNetTrainer_100epochs` with resolution check preventing collisions |
+| **Model Training Runner** | **Complete** | Orchestration for single-fold, all-fold, and multi-dataset cross-validation |
+| **Inference CLI** | **Complete** | Supports validation fold (`--split val --fold {0..4}`) and test set (`--split test`) |
+| **Evaluation & HD95 Metrics** | **Complete** | Fold-aware validation; reports finite-only mean with explicit infinite counts |
 | **Interactive HTML QC Reports** | **Complete** | 5 standalone HTML reports with embedded Base64 slice visuals & red ROI contours |
-| **Automated Test Suite** | **Complete** | **161 unit & integration tests passing** (`pytest tests/`) |
+| **Automated Test Suite** | **Complete** | **243 passing unit & integration tests** (`pytest tests/`) |
 
 ---
 
@@ -110,41 +140,67 @@ Raw Scans (data/raw/dataset/sub-XXXXX/anat/)
 ```text
 fcd-segmentation/
 ├── configs/
-│   ├── preprocessing_config.json # Pipeline configuration (paths, registration, device)
-│   ├── data.yaml                 # Legacy path rules
-│   └── models/                   # Model experiment configurations
+│   ├── preprocessing_config.json # Preprocessing pipeline settings (paths, registration, device)
+│   ├── training.yaml             # Training workflow configuration (trainer, batch size, epochs)
+│   └── evaluation.yaml           # Metric evaluation and thresholding parameters
 ├── data/
-│   ├── raw/                      # Raw dataset root (sub-*/anat/ scans; never modified)
-│   └── processed/                # Output directory for nnU-Net v2 datasets
-│       ├── Dataset101_FLAIR/
-│       ├── Dataset102_T1/
-│       ├── Dataset103_Fusion/
-│       └── subject_splits.json   # Synchronized 5-fold cross-validation splits
+│   ├── raw/
+│   │   ├── dataset/              # Raw BIDS scans (sub-*/anat/ scans; never modified)
+│   │   └── participants.tsv      # Subject metadata with clinical group and split assignments
+│   ├── processed/                # Preprocessed nnU-Net v2 datasets (nnUNet_raw)
+│   │   ├── Dataset101_FLAIR/
+│   │   ├── Dataset102_T1/
+│   │   └── Dataset103_Fusion/
+│   └── nnunet_preprocessed/      # nnU-Net preprocessed data & splits_final.json
+├── docs/
+│   └── training.md               # In-depth training and cluster deployment guide
 ├── outputs/
+│   ├── predictions/              # Inferred segmentation masks
+│   │   └── Dataset101_FLAIR/
+│   │       ├── fold_0/           # Fold validation predictions
+│   │       └── test/             # Held-out test predictions
+│   ├── evaluation/               # Metrics CSV and JSON evaluation reports
 │   └── preprocessing/
-│       ├── qc/                   # Self-contained HTML QC reports
-│       └── logs/                 # Pipeline manifests and run logs
+│       ├── qc/                   # Standalone HTML QC reports
+│       └── logs/                 # Preprocessing run manifests and logs
 ├── scripts/
-│   ├── prepare_dataset.py        # Primary CLI entry point for preprocessing
-│   ├── check_environment.py     # Environment and CUDA diagnostic tool
-│   ├── audit_dataset.py          # Quick inventory of input files
-│   ├── train.py                  # Model training orchestrator
-│   ├── predict.py                # Model inference script
-│   └── evaluate.py               # Evaluation and metrics computation
+│   ├── download_raw_dataset.py   # Downloads raw OpenNeuro ds004199 dataset
+│   ├── prepare_dataset.py        # Primary CLI entry point for preprocessing pipeline
+│   ├── preflight_check.py        # Pre-training environment & dataset diagnostics
+│   ├── train.py                  # Model training orchestrator (nnU-Net v2)
+│   ├── predict.py                # Model inference CLI (val folds and test cohort)
+│   └── evaluate.py               # Metric evaluation CLI (Dice, IoU, HD95, etc.)
 ├── src/fcd_segmentation/
-│   ├── cli.py                    # Package command-line endpoints
-│   └── preprocessing/
-│       ├── discovery.py          # Subject and scan pairing discovery
-│       ├── skull_stripping.py    # HD-BET integration and mask validation
-│       ├── registration.py       # SimpleITK registration & QC image generation
-│       ├── resampling.py         # Label-safe interpolation and grid alignment
-│       ├── normalization.py      # Foreground z-score normalization
-│       ├── dataset.py            # nnU-Net v2 dataset builder & metadata writer
-│       ├── qc_reports.py         # HTML QC reports with embedded Base64 visuals
-│       └── pipeline.py           # Subject orchestrator with safe cleanup
-├── tests/                        # Comprehensive test suite (161 tests)
-│   ├── preprocessing/            # Unit & integration tests for preprocessing modules
-│   └── conftest.py
+│   ├── config.py                 # Pydantic schema validation for configs
+│   ├── evaluation/
+│   │   ├── evaluator.py          # Dataset evaluation and cohort boundary checker
+│   │   └── metrics.py            # Multi-metric computation engine (finite/infinite HD95)
+│   ├── inference/
+│   │   └── predict.py            # nnU-Net model prediction backend
+│   ├── preprocessing/
+│   │   ├── discovery.py          # Subject and scan pairing discovery
+│   │   ├── geometry.py           # Voxel grid, affine, and dimension validators
+│   │   ├── skull_stripping.py    # HD-BET integration and mask validation
+│   │   ├── registration.py       # SimpleITK registration & QC image generation
+│   │   ├── resampling.py         # Label-safe interpolation and grid alignment
+│   │   ├── normalization.py      # Foreground z-score normalization
+│   │   ├── dataset.py            # nnU-Net v2 dataset builder & metadata writer
+│   │   ├── qc_reports.py         # HTML QC reports with embedded Base64 visuals
+│   │   └── pipeline.py           # Subject orchestrator with safe cleanup
+│   └── training/
+│       ├── cross_validation.py   # Stratified 5-fold cross-validation split engine
+│       ├── dataset_validator.py  # Strict nnU-Net dataset integrity checker
+│       ├── paths.py              # Environment variable and path resolver
+│       ├── runner.py             # Subprocess execution and logging wrapper
+│       ├── trainers.py           # FCDnnUNetTrainer_100epochs and trainer resolver
+│       └── workflow.py           # Training workflow guard and coordinator
+├── tests/                        # Comprehensive test suite (243 tests)
+│   ├── preprocessing/            # Preprocessing, geometry, and QC report tests
+│   ├── test_cross_validation.py  # Cross-validation integrity & leakage tests
+│   ├── test_evaluator.py         # Evaluator and cohort validation tests
+│   ├── test_metrics.py           # Metric accuracy and infinite HD95 tests
+│   ├── test_trainer_discovery.py # Trainer resolution tests
+│   └── test_training.py          # Training command and workflow guard tests
 └── pyproject.toml                # Project packaging and dependencies
 ```
 
@@ -152,10 +208,10 @@ fcd-segmentation/
 
 ## Prerequisites
 
-- **Python**: `>=3.12, <3.13`
 - **Operating System**: Linux (Ubuntu 22.04+ recommended) or Windows 10/11 (64-bit)
-- **CUDA / GPU**: NVIDIA GPU with 4GB+ VRAM recommended for fast HD-BET skull stripping; CPU execution is fully supported via `--device cpu`.
-- **HD-BET**: External brain extraction tool (`hd-bet==2.0.1`).
+- **Python**: `>=3.11, <3.13` (Python 3.12 recommended)
+- **GPU**: NVIDIA GPU with 8GB+ VRAM recommended for HD-BET skull stripping and nnU-Net 3D full-resolution training; CPU execution is supported for testing via `--device cpu`.
+- **Disk Space**: ~150 GB free disk space recommended for raw scans, preprocessed volumes, and nnU-Net training plans.
 
 ---
 
@@ -165,100 +221,101 @@ fcd-segmentation/
 
 ```bash
 # 1. Clone repository and navigate inside
-git clone <YOUR_REPOSITORY_URL>
+git clone https://github.com/utpalgautam/fcd-segmentation.git
 cd fcd-segmentation
 
-# 2. Create virtual environment using Python 3.12
+# 2. Create virtual environment with Python 3.12
 python3.12 -m venv .venv
 source .venv/bin/activate
 
-# 3. Upgrade pip and install package with imaging & dev dependencies
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev,imaging]"
+# 3. Upgrade pip and install package in editable mode with all dependencies
+pip install --upgrade pip
+pip install -e ".[dev,imaging]"
 
-# 4. Install PyTorch with CUDA (adjust cuda version to match system driver)
-pip install torch --index-url https://download.pytorch.org/whl/cu121
+# 4. Install PyTorch with CUDA support (adjust cu121/cu124 according to your driver)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
-# 5. Install HD-BET for skull stripping
+# 5. Install HD-BET for brain skull stripping
 pip install hd-bet==2.0.1
 
-# 6. Verify environment and test suite
-fcd-check-environment
-pytest tests/
+# 6. Install openneuro-py for dataset downloading
+pip install openneuro-py
+
+# 7. Verify installation and run test suite
+pytest tests/ -v
 ```
 
 ### Windows Installation
 
-Open **PowerShell** as standard user:
+Open **PowerShell**:
 
 ```powershell
 # 1. Clone repository and navigate inside
-git clone <YOUR_REPOSITORY_URL>
+git clone https://github.com/utpalgautam/fcd-segmentation.git
 Set-Location fcd-segmentation
 
 # 2. Create virtual environment with Python 3.12
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 
-# 3. Upgrade pip and install package
+# 3. Upgrade pip and install package in editable mode
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev,imaging]"
 
 # 4. Install PyTorch with CUDA
-pip install torch --index-url https://download.pytorch.org/whl/cu121
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
-# 5. Install HD-BET
-pip install hd-bet==2.0.1
+# 5. Install HD-BET and openneuro-py
+pip install hd-bet==2.0.1 openneuro-py
 
-# 6. Verify environment and test suite
-fcd-check-environment
-pytest tests/
+# 6. Verify installation and run test suite
+pytest tests\ -v
 ```
-
-*(If using Windows Command Prompt `cmd.exe`, activate using `.venv\Scripts\activate.bat` instead).*
 
 ---
 
-## Running the Preprocessing Pipeline
+## Step-by-Step Pipeline Execution
 
-All commands should be executed from the repository root with the virtual environment activated.
+Follow these steps sequentially to run the entire pipeline from raw data acquisition to model evaluation.
 
-### 1. Quick Dry Run (Inventory Only)
+### Step 1: Download Raw OpenNeuro Dataset
+
+Download the public raw OpenNeuro BIDS dataset `ds004199` (170 subjects). No API key or account login is required:
+
+```bash
+# Download raw dataset into data/raw/dataset
+python scripts/download_raw_dataset.py \
+    --dataset ds004199 \
+    --output data/raw/dataset
+```
+
+*Flags*:
+- `--dataset`: OpenNeuro dataset accession (default: `ds004199`).
+- `--output`: Destination directory (default: `data/raw/dataset`).
+- `--skip-verification`: Skip verifying subject count against `participants.tsv`.
+
+---
+
+### Step 2: Run Preprocessing Pipeline
+
+Run skull stripping, T1-to-FLAIR rigid registration, masked z-score normalization, and nnU-Net dataset packaging:
+
+#### A. Quick Dry Run (Inventory Only)
 Inspect discovered subjects, check scan pairs, and produce `input_inventory.html` without running any heavy processing:
-
-**Linux:**
 ```bash
 python scripts/prepare_dataset.py --inventory-only
 ```
 
-**Windows (PowerShell):**
-```powershell
-python scripts\prepare_dataset.py --inventory-only
-```
-
----
-
-### 2. Smoke Test on a Subset
-Run the complete pipeline on just 2 subjects to verify HD-BET, registration, and dataset output without waiting for the full cohort:
-
-**Linux:**
+#### B. Smoke Test on a Subset (e.g. 2 subjects)
 ```bash
-python scripts/prepare_dataset.py --limit 2 --reports outputs/preprocessing
+python scripts/prepare_dataset.py \
+    --limit 2 \
+    --reports outputs/preprocessing \
+    --device cuda
 ```
 
-**Windows (PowerShell):**
-```powershell
-python scripts\prepare_dataset.py --limit 2 --reports outputs\preprocessing
-```
-
----
-
-### 3. Full Pipeline Execution (Linux)
-
-Run the end-to-end preprocessing pipeline on the entire cohort using GPU acceleration and automatic resume for already completed subjects:
-
+#### C. Full Preprocessing Execution
 ```bash
-# Standard complete run with CUDA acceleration and resume capability
 python scripts/prepare_dataset.py \
     --input data/raw/dataset \
     --output data/processed \
@@ -266,135 +323,188 @@ python scripts/prepare_dataset.py \
     --config configs/preprocessing_config.json \
     --device cuda \
     --resume
-
-# CPU-only execution (if NVIDIA GPU / CUDA is not available):
-python scripts/prepare_dataset.py \
-    --input data/raw/dataset \
-    --output data/processed \
-    --reports outputs/preprocessing \
-    --device cpu \
-    --resume
-
-# Force re-processing of all subjects from scratch:
-python scripts/prepare_dataset.py \
-    --input data/raw/dataset \
-    --output data/processed \
-    --reports outputs/preprocessing \
-    --overwrite
 ```
 
----
-
-### 4. Full Pipeline Execution (Windows)
-
-**PowerShell:**
-```powershell
-# Standard complete run with CUDA acceleration and resume capability
-python scripts\prepare_dataset.py `
-    --input data\raw\dataset `
-    --output data\processed `
-    --reports outputs\preprocessing `
-    --config configs\preprocessing_config.json `
-    --device cuda `
-    --resume
-
-# CPU-only execution:
-python scripts\prepare_dataset.py `
-    --input data\raw\dataset `
-    --output data\processed `
-    --reports outputs\preprocessing `
-    --device cpu `
-    --resume
-
-# Force re-processing of all subjects from scratch:
-python scripts\prepare_dataset.py `
-    --input data\raw\dataset `
-    --output data\processed `
-    --reports outputs\preprocessing `
-    --overwrite
-```
-
-**Command Prompt (`cmd.exe`):**
-```cmd
-python scripts\prepare_dataset.py --input data\raw\dataset --output data\processed --reports outputs\preprocessing --config configs\preprocessing_config.json --device cuda --resume
-```
-
----
-
-### CLI Flags & Options Reference
-
+*Key Preprocessing CLI Flags*:
 | Argument | Description | Default |
 |---|---|---|
-| `--input`, `--data-root` | Path to raw cohort directory containing `sub-*/anat/` | `data/raw/dataset` |
+| `--input` | Path to raw cohort directory containing `sub-*/anat/` | `data/raw/dataset` |
 | `--output` | Destination directory for processed nnU-Net v2 datasets | `data/processed` |
-| `--reports` | Destination directory for HTML QC reports, manifests, and logs | `outputs/preprocessing` |
+| `--reports` | Destination directory for HTML QC reports and logs | `outputs/preprocessing` |
 | `--config` | Path to JSON pipeline configuration file | `configs/preprocessing_config.json` |
-| `--inventory-only` | Run cohort discovery and input report without processing MRI data | `False` |
-| `--limit N` | Process only first `N` subjects (ideal for debugging/testing) | `None` (all) |
-| `--resume` | Skip subjects that already have verified outputs matching inputs | `False` |
-| `--overwrite` | Force re-run and overwrite all existing outputs and QC reports | `False` |
-| `--device {cuda,cpu}` | Device selector for HD-BET skull stripping | Config default (`cuda`) |
-| `--fail-fast` | Immediately halt pipeline on first error instead of logging & continuing | `False` |
-| `--keep-failed-intermediates` | Preserve temporary directory when a subject fails (for debugging) | `False` |
+| `--device` | Compute device for HD-BET skull stripping (`cuda` or `cpu`) | `cuda` |
+| `--resume` | Skip subjects with already verified complete outputs | `False` |
+| `--overwrite` | Force re-processing of all subjects from scratch | `False` |
+| `--limit N` | Process only first `N` subjects (for debugging) | `None` (all) |
 
 ---
 
-## Model Training Workflow (nnU-Net v2)
+### Step 3: Preflight System & Environment Check
 
-The model training workflow provides end-to-end orchestration for `Dataset101_FLAIR`, `Dataset102_T1`, and `Dataset103_Fusion` models using nnU-Net v2. Detailed documentation is available in [docs/training.md](docs/training.md).
+Before launching training on a GPU workstation or cluster, verify environment readiness:
 
-> [!IMPORTANT]
-> The current dataset was preprocessed with `--limit 1` for smoke testing. The training workflow enforces a **hard cohort size guard** (minimum 5 valid cases) and safely blocks 5-fold cross-validation until the full dataset is preprocessed.
-
-### 1. Environment & Dataset Check
-
-Validate Python, PyTorch, CUDA, nnU-Net package status, path resolution, and dataset metadata without running training:
-
-```powershell
-python .\scripts\train.py --check
-python .\scripts\train.py --check --dataset all
+```bash
+python scripts/preflight_check.py --full --device cuda
 ```
 
-### 2. Experiment Preparation & Fingerprinting
+The preflight check inspects:
+- Python version, PyTorch version, and CUDA acceleration.
+- nnU-Net v2 CLI commands (`nnUNetv2_plan_and_preprocess`, `nnUNetv2_train`, `nnUNetv2_predict`).
+- Dynamic discovery of custom trainer `FCDnnUNetTrainer_100epochs`.
+- Integrity of `Dataset101_FLAIR`, `Dataset102_T1`, and `Dataset103_Fusion`.
+- Presence and consistency of cross-validation splits.
 
-Extract dataset fingerprints and run nnU-Net experiment planning after completing full preprocessing:
+---
 
-```powershell
-python .\scripts\train.py --prepare --dataset 101
-python .\scripts\train.py --prepare --dataset all
+### Step 4: Generate Stratified 5-Fold Cross-Validation Splits
+
+Generate leak-free, deterministic 5-fold cross-validation splits stratified by clinical group (`fcd` vs. `hc`), with random seed `42`:
+
+```bash
+# Generate splits for all three datasets simultaneously:
+python scripts/train.py --split-folds --dataset all
+
+# Alternatively, generate explicitly for each dataset directory:
+python -m fcd_segmentation.training.cross_validation \
+    --participants data/raw/participants.tsv \
+    --output-dir data/nnunet_preprocessed/Dataset101_FLAIR/splits_final.json
+
+python -m fcd_segmentation.training.cross_validation \
+    --participants data/raw/participants.tsv \
+    --output-dir data/nnunet_preprocessed/Dataset102_T1/splits_final.json
+
+python -m fcd_segmentation.training.cross_validation \
+    --participants data/raw/participants.tsv \
+    --output-dir data/nnunet_preprocessed/Dataset103_Fusion/splits_final.json
 ```
 
-### 3. Single-Fold & 5-Fold Training
+**Cross-Validation Guarantees**:
+- Exactly 142 training subjects (57 FCD, 85 HC).
+- All 28 test FCD subjects are strictly excluded (zero data leakage).
+- For every fold: `train = expected_train - fold_val` with zero overlaps and no duplicates.
 
-Train models sequentially on available GPU hardware. By default, training runs with the calibrated **100-epoch trainer** (`nnUNetTrainer_100epochs` configured in `configs/training.yaml`):
+---
 
-```powershell
-# Train Fold 0 of FLAIR model (runs for 100 epochs by default)
-python .\scripts\train.py --dataset 101 --fold 0
+### Step 5: nnU-Net Experiment Planning & Preprocessing
 
-# Train 5-fold cross validation on FLAIR model
-python .\scripts\train.py --dataset 101 --all-folds
+Run dataset integrity verification, fingerprint extraction, and planning:
 
-# Train 5-fold cross validation across all three datasets (15 runs total)
-python .\scripts\train.py --dataset all --all-folds
+```bash
+# Using project runner:
+python scripts/train.py --prepare --dataset 101
+python scripts/train.py --prepare --dataset 102
+python scripts/train.py --prepare --dataset 103
 
-# Optional: override trainer if desired
-python .\scripts\train.py --dataset 101 --fold 0 --trainer nnUNetTrainer
+# Or directly with nnU-Net v2 CLI:
+nnUNetv2_plan_and_preprocess -d 101 102 103 -c 3d_fullres --verify_dataset_integrity
 ```
 
-### 4. Resuming Training
+---
 
-Resume interrupted training from the latest checkpoint (`--c` flag):
+### Step 6: Train Models
 
-```powershell
-python .\scripts\train.py --dataset 101 --fold 0 --continue
+Train models using the calibrated 100-epoch custom trainer (`FCDnnUNetTrainer_100epochs`):
+
+```bash
+# Train Fold 0 of FLAIR model (Dataset 101)
+python scripts/train.py --config configs/training.yaml --dataset 101 --fold 0 --device cuda
+
+# Train Fold 0 of Multimodal Fusion model (Dataset 103)
+python scripts/train.py --config configs/training.yaml --dataset 103 --fold 0 --device cuda
+
+# Train all 5 folds sequentially for a dataset
+python scripts/train.py --config configs/training.yaml --dataset 101 --all-folds --device cuda
+
+# Resume an interrupted training run from latest checkpoint
+python scripts/train.py --config configs/training.yaml --dataset 101 --fold 0 --continue --device cuda
 ```
+
+*Key Training CLI Flags*:
+| Argument | Description | Default |
+|---|---|---|
+| `--config` | Path to YAML training configuration file | `configs/training.yaml` |
+| `--dataset` | Target dataset: `101`, `102`, `103`, or `all` | `101` |
+| `--fold` | Target fold index: `0`, `1`, `2`, `3`, `4`, or `all` | `0` |
+| `--all-folds` | Train all 5 folds sequentially | `False` |
+| `--trainer` | Custom trainer class name | `FCDnnUNetTrainer_100epochs` |
+| `--configuration`, `-c` | nnU-Net model configuration (e.g. `3d_fullres`) | Config default |
+| `--continue` | Resume training from latest checkpoint | `False` |
+| `--device` | Compute device (`cuda`, `cpu`) | `cuda` |
+
+---
+
+### Step 7: Model Inference / Predictions
+
+Generate segmentation masks on either cross-validation folds or the independent held-out test cohort:
+
+```bash
+# 1. Predict on validation cohort of Fold 0 (outputs to outputs/predictions/Dataset101_FLAIR/fold_0)
+python scripts/predict.py \
+    --dataset 101 \
+    --fold 0 \
+    --split val \
+    --device cuda
+
+# 2. Predict on held-out test cohort (outputs to outputs/predictions/Dataset101_FLAIR/test)
+python scripts/predict.py \
+    --dataset 101 \
+    --split test \
+    --device cuda
+
+# 3. Predict with ensembling across all 5 folds on the test set
+python scripts/predict.py \
+    --dataset 101 \
+    --fold all \
+    --split test \
+    --device cuda
+```
+
+*Inference Output Paths*:
+- Validation Fold: `outputs/predictions/{dataset_name}/fold_{fold}/`
+- Held-Out Test Set: `outputs/predictions/{dataset_name}/test/`
+
+---
+
+### Step 8: Metric Evaluation & Scientific Reporting
+
+Evaluate predicted segmentations against ground truth labels:
+
+```bash
+# 1. Evaluate Fold 0 validation predictions (against labelsTr)
+python scripts/evaluate.py \
+    --dataset 101 \
+    --split val \
+    --fold 0
+
+# 2. Evaluate held-out test predictions (against labelsTs, 28 FCD cases)
+python scripts/evaluate.py \
+    --dataset 101 \
+    --split test
+
+# 3. Multi-modality benchmark comparison (compares FLAIR, T1, and Fusion on test set)
+python scripts/evaluate.py \
+    --dataset all \
+    --split test
+```
+
+#### Metrics Reported:
+- **Dice Similarity Coefficient (DSC)** and **Intersection over Union (IoU / Jaccard)**
+- **Sensitivity (Recall)**, **Specificity**, and **Precision (PPV)**
+- **95% Hausdorff Distance (HD95)**:
+  - `finite_only_mean`: Average distance across successful segmentations.
+  - `finite_count` / `infinite_count`: Number of cases with finite vs. failed segmentations.
+  - `infinite_percentage`: Exact failure rate percentage (reported transparently; never silently dropped).
+
+Output files are stored under `outputs/evaluation/{dataset_name}/`:
+- `evaluation_summary_{split}.json`
+- `evaluation_per_subject_{split}.csv`
+- `modality_comparison_{split}.json` (when `--dataset all` is evaluated)
 
 ---
 
 ## Quality Control (QC) Reports
 
-The pipeline produces 5 self-contained, interactive HTML reports with embedded Base64 imagery:
+The preprocessing pipeline automatically generates 5 self-contained, interactive HTML reports with embedded Base64 imagery in `outputs/preprocessing/qc/`:
 
 1. **`input_inventory.html`**:
    - Total subjects discovered, FCD vs. Healthy Control counts.
@@ -402,14 +512,13 @@ The pipeline produces 5 self-contained, interactive HTML reports with embedded B
 2. **`skull_stripping_FLAIR.html`**:
    - Axial, coronal, and sagittal orthogonal views.
    - Brain mask outline (cyan) and lesion ROI contour (red) overlay.
-   - Dice overlap coefficient and brain volume metrics.
+   - Foreground volume and Dice metrics.
 3. **`skull_stripping_T1.html`**:
    - T1 native space skull-stripping views and brain mask verification.
 4. **`registration_T1_to_FLAIR.html`**:
    - Side-by-side Fixed FLAIR and Resampled T1 views.
    - **Color Overlay**: FLAIR displayed in Green, T1 in Magenta, and ground-truth lesion ROI in **Red contour**.
    - **Checkerboard View**: Alternate 4x4x4 grid blocks to visually assess anatomical contour continuity across sulci and ventricles.
-   - Quantitative foreground correlation metrics.
 5. **`final_dataset_qc.html`**:
    - Comprehensive audit of the 3 nnU-Net datasets (`Dataset101_FLAIR`, `Dataset102_T1`, `Dataset103_Fusion`).
    - Verifies channel geometry matching, target voxel grids, lesion voxel counts, and intensity distributions.
@@ -418,16 +527,16 @@ The pipeline produces 5 self-contained, interactive HTML reports with embedded B
 
 ## Testing & Validation
 
-The codebase includes comprehensive unit, integration, and geometry tests. Run them at any time:
+The codebase includes an extensive automated test suite covering unit tests, integration tests, geometry verification, and cross-validation integrity:
 
 ```bash
-# Run all tests (161 tests)
-pytest tests/
-
-# Run with verbose output
+# Run the complete test suite (243 tests)
 pytest tests/ -v
 
-# Run only preprocessing unit & integration tests
+# Run only training and evaluation tests
+pytest tests/test_cross_validation.py tests/test_evaluator.py tests/test_training.py -v
+
+# Run only preprocessing and registration tests
 pytest tests/preprocessing/ -v
 
 # Run code style and lint checks
@@ -438,30 +547,41 @@ ruff check .
 
 ## Troubleshooting & Common Issues
 
-### 1. `hd-bet: command not found`
+### 1. `openneuro-py: command not found`
+Install `openneuro-py` in your active virtual environment:
+```bash
+pip install openneuro-py
+```
+
+### 2. `hd-bet: command not found`
 Ensure `hd-bet` is installed in your active virtual environment:
 ```bash
 pip install hd-bet==2.0.1
-# Verify:
 which hd-bet          # Linux
 Get-Command hd-bet    # Windows PowerShell
 ```
 
-### 2. CUDA Out of Memory during Skull Stripping
-If your GPU VRAM is constrained (< 4 GB), run with `--device cpu`:
+### 3. CUDA Out of Memory during Skull Stripping
+If GPU VRAM is constrained (< 4 GB), run skull stripping with `--device cpu`:
 ```bash
 python scripts/prepare_dataset.py --device cpu --resume
 ```
 
-### 3. Missing ROI on Healthy Control (HC) subjects
-Healthy control subjects do not have FCD lesions. The pipeline automatically assigns them a verified blank mask (all zeros) in `Dataset101_FLAIR`, `Dataset102_T1`, and `Dataset103_Fusion`, and labels their QC overlap as `N/A (HC)`.
+### 4. Custom Trainer Resolution Error
+If nnU-Net reports that it cannot find `FCDnnUNetTrainer_100epochs`, ensure the project root is in `PYTHONPATH` or that the runner is used:
+```bash
+python scripts/preflight_check.py --full
+```
+The runner automatically sets `nnUNet_extTrainer=fcd_segmentation.training.trainers` in the environment.
 
-### 4. Resuming Interrupted Processing
-If a run is stopped mid-way, simply re-run with `--resume`. The orchestrator inspects the generated output files and logs, skipping completed subjects without redundant computation.
+### 5. Resuming Interrupted Processing or Training
+- **Preprocessing**: Pass `--resume` to `prepare_dataset.py` to skip already completed subjects.
+- **Training**: Pass `--continue` to `train.py` to resume model training from the latest checkpoint (`checkpoint_latest.pth`).
 
 ---
 
 ## Dataset Privacy & Handling
 
+> [!CAUTION]
 > **CRITICAL REMINDER**:
-> Never commit patient imaging files, NIfTI volumes (`*.nii`, `*.nii.gz`), segmentation labels, clinical tables, or personal health identifiers to Git. The `.gitignore` is pre-configured to exclude `data/raw/`, `data/processed/`, and `outputs/`. Always verify using `git status` prior to committing.
+> Never commit patient imaging files, NIfTI volumes (`*.nii`, `*.nii.gz`), segmentation labels, clinical tables, or personal health identifiers to Git. The `.gitignore` is pre-configured to exclude `data/raw/`, `data/processed/`, `data/nnunet_preprocessed/`, and `outputs/`. Always verify using `git status` prior to committing.
