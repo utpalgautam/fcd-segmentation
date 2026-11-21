@@ -3,6 +3,7 @@
 
 from fcd_segmentation.preprocessing.qc_reports import (
     generate_final_dataset_qc_html,
+    generate_geometry_validation_html,
     generate_input_inventory_html,
     generate_registration_html,
     generate_skull_stripping_html,
@@ -126,3 +127,47 @@ def test_generate_final_dataset_qc_html(tmp_path):
     assert "Final nnU-Net Datasets Quality Control" in content
     assert "sub-001" in content
     assert "Dataset101_FLAIR" in content
+
+
+def test_generate_geometry_validation_html(tmp_path):
+    out = tmp_path / "geom_val.html"
+    records = [
+        {
+            "subject_id": "sub-001",
+            "is_hc": False,
+            "status": "PASS",
+            "flair_shape": [160, 256, 256],
+            "registered_t1_shape": [160, 256, 256],
+            "roi_shape": [160, 256, 256],
+            "flair_spacing": [1.0, 1.0, 1.0],
+            "max_geometry_diff_mm": 0.0,
+            "roi_voxels_before": 2581,
+            "roi_voxels_after": 2581,
+            "roi_centroid_distance_mm": 0.0001,
+            "errors": [],
+            "warnings": [],
+        },
+        {
+            "subject_id": "sub-002",
+            "is_hc": True,
+            "status": "PASS",
+            "flair_shape": [157, 256, 256],
+            "registered_t1_shape": [157, 256, 256],
+            "roi_shape": [157, 256, 256],
+            "flair_spacing": [1.0, 1.0, 1.0],
+            "max_geometry_diff_mm": 0.0,
+            "roi_voxels_before": None,
+            "roi_voxels_after": 0,
+            "roi_centroid_distance_mm": None,
+            "errors": [],
+            "warnings": [],
+        },
+    ]
+    p = generate_geometry_validation_html(records, out)
+    assert p.is_file()
+    content = p.read_text(encoding="utf-8")
+    assert "NIfTI Spatial Geometry & Lesion ROI Validation Report" in content
+    assert "sub-001" in content
+    assert "sub-002" in content
+    assert "badge-pass" in content
+    assert "2,581" in content

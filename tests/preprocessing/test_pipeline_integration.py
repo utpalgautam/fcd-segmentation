@@ -152,32 +152,48 @@ def test_end_to_end_pipeline(mock_hdbet, synthetic_cohort):
     # Run pipeline
     results = run_pipeline(config_path=cfg_path)
     summary = results["summary"]
-    assert summary["attempted"] == 1  # sub-001 (sub-002 excluded due to missing ROI)
-    assert summary["passed"] == 1
+    # Both sub-001 (FCD) and sub-002 (HC) should be processed now
+    # HC subjects get zero lesion masks generated automatically and pass validation
+    assert summary["attempted"] == 2
+    assert summary["passed"] == 2
+    assert summary["warned"] == 0
     assert summary["failed"] == 0
 
-    # 1. Verify 3 nnU-Net datasets
+    # 1. Verify 3 nnU-Net datasets for both subjects
     for ds_id in ("Dataset101_FLAIR", "Dataset102_T1", "Dataset103_Fusion"):
         ds_dir = processed_dir / ds_id
         assert ds_dir.is_dir()
         assert (ds_dir / "dataset.json").is_file()
         assert (ds_dir / "imagesTr" / "sub-001_0000.nii.gz").is_file()
         assert (ds_dir / "labelsTr" / "sub-001.nii.gz").is_file()
+        assert (ds_dir / "imagesTr" / "sub-002_0000.nii.gz").is_file()
+        assert (ds_dir / "labelsTr" / "sub-002.nii.gz").is_file()
 
-    # 2. Verify Fusion has channel 1
+    # 2. Verify Fusion has channel 1 for both subjects
     fusion_dir = processed_dir / "Dataset103_Fusion"
     assert (fusion_dir / "imagesTr" / "sub-001_0001.nii.gz").is_file()
+    assert (fusion_dir / "imagesTr" / "sub-002_0001.nii.gz").is_file()
 
-    # 3. Verify fusion geometry matches exactly
-    f0 = nib.load(str(fusion_dir / "imagesTr" / "sub-001_0000.nii.gz"))
-    f1 = nib.load(str(fusion_dir / "imagesTr" / "sub-001_0001.nii.gz"))
-    lbl = nib.load(str(fusion_dir / "labelsTr" / "sub-001.nii.gz"))
-    assert same_grid(f0, f1, tolerance_mm=0.01)
-    assert same_grid(f0, lbl, tolerance_mm=0.01)
+    # 3. Verify fusion geometry matches exactly for both subjects
+    for subj in ("sub-001", "sub-002"):
+        f0 = nib.load(str(fusion_dir / "imagesTr" / f"{subj}_0000.nii.gz"))
+        f1 = nib.load(str(fusion_dir / "imagesTr" / f"{subj}_0001.nii.gz"))
+        lbl = nib.load(str(fusion_dir / "labelsTr" / f"{subj}.nii.gz"))
+        assert same_grid(f0, f1, tolerance_mm=0.01)
+        assert same_grid(f0, lbl, tolerance_mm=0.01)
 
     # 4. Verify discrete labels
-    lbl_data = np.asarray(lbl.dataobj)
-    assert set(np.unique(lbl_data)).issubset({0, 1})
+    # sub-001 (FCD) should have lesion voxels
+    lbl_001 = nib.load(str(fusion_dir / "labelsTr" / "sub-001.nii.gz"))
+    lbl_001_data = np.asarray(lbl_001.dataobj)
+    assert set(np.unique(lbl_001_data)).issubset({0, 1})
+    assert np.count_nonzero(lbl_001_data) > 0  # FCD has lesion
+
+    # sub-002 (HC) should have zero mask
+    lbl_002 = nib.load(str(fusion_dir / "labelsTr" / "sub-002.nii.gz"))
+    lbl_002_data = np.asarray(lbl_002.dataobj)
+    assert set(np.unique(lbl_002_data)).issubset({0, 1})
+    assert np.count_nonzero(lbl_002_data) == 0  # HC has zero mask
 
     # 5. Verify HTML reports exist
     qc_dir = reports_dir / "qc"
@@ -201,6 +217,6 @@ def test_end_to_end_pipeline(mock_hdbet, synthetic_cohort):
     for p_str, original_mtime in raw_mtimes.items():
         assert Path(p_str).stat().st_mtime_ns == original_mtime
 
-    # 8. Test --resume skips completed subject
+    # 8. Test --resume skips completed subjects
     resume_res = run_pipeline(config_path=cfg_path, resume=True, overwrite=False)
-    assert resume_res["summary"]["skipped"] == 1
+    assert resume_res["summary"]["skipped"] == 2

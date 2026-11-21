@@ -201,6 +201,7 @@ def validate_nnunet_subject_outputs(
     fusion_dataset_dir: Path | str,
     split: str = "train",
     held_out_target: str = "imagesTr",
+    is_hc: bool = False,
 ) -> dict[str, Any]:
     """
     Validate that all expected output files exist, load correctly,
@@ -270,8 +271,12 @@ def validate_nnunet_subject_outputs(
             errors.append(f"Label mask contains unexpected values: {u_lbl}")
 
         lesion_voxels = int(np.count_nonzero(lbl_data))
-        if lesion_voxels == 0:
-            warnings.append("Lesion mask has 0 non-zero voxels.")
+        if is_hc:
+            if lesion_voxels != 0:
+                errors.append(f"HC subject {subject_id} must have 0 lesion voxels, found {lesion_voxels}.")
+        else:
+            if lesion_voxels == 0:
+                warnings.append("Lesion mask has 0 non-zero voxels.")
 
         target_shape = list(f_img.shape)
         target_spacing = [round(float(s), 3) for s in nib.affines.voxel_sizes(f_img.affine)]

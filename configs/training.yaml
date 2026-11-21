@@ -2,6 +2,11 @@ seed: 42
 device: auto
 model: flair
 data_config: configs/data.yaml
+
+# Architectural / Trainer Hyperparameters
+# Note: In nnU-Net v2, batch size is determined by the plans configuration (plans.json),
+# while epoch count and learning rate are configured directly in the custom trainer class.
+# FCDnnUNetTrainer_100epochs sets num_epochs = 100, initial_lr = 0.001, and save_every = 25.
 batch_size: 1
 epochs: 100
 learning_rate: 0.001
@@ -21,7 +26,7 @@ datasets:
   103: Dataset103_Fusion
 
 configuration: 3d_fullres
-trainer: nnUNetTrainer_100epochs
+trainer: FCDnnUNetTrainer_100epochs
 plans: nnUNetPlans
 min_cases_for_five_fold: 5
 keep_going: false

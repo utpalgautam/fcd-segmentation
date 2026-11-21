@@ -382,9 +382,9 @@ def generate_registration_html(
         metric_str = f"{float(metric):.4f}" if metric is not None else "N/A"
         flags = html.escape("; ".join(r.get("flags", [])) or "None")
         roi_voxels = r.get("roi_lesion_voxels", 0)
-        roi_voxels_str = f"{int(roi_voxels):,}" if roi_voxels else "N/A (HC or missing)"
+        roi_voxels_str = f"{int(roi_voxels):,}" if roi_voxels else "N/A (HC or zero mask)"
         roi_overlay = r.get("roi_overlay", False)
-        roi_overlay_str = "Yes — red contour shown" if roi_overlay else "No"
+        roi_overlay_str = "Yes — red contour overlaid on FLAIR, Reg T1, Overlay & ROI panel" if roi_overlay else "No (HC)"
 
         img_html = ""
         b64 = r.get("base64_image")
@@ -421,7 +421,7 @@ def generate_registration_html(
 <div class="container">
   <header>
     <h1>T1-to-FLAIR Registration Quality Control</h1>
-    <div class="subtitle">Reference space: FLAIR. Moving: T1 (registered). Views: Fixed FLAIR, Resampled T1, Color Overlay (FLAIR=green, T1=magenta), and 3D Checkerboard across axial, coronal, and sagittal planes. <strong>Red contour = lesion ROI</strong> (shown where available — both images are in FLAIR grid space after registration).</div>
+    <div class="subtitle">Reference space: FLAIR. Moving: T1 (registered). Views: Fixed FLAIR, Resampled T1, Color Overlay (FLAIR=green, T1=magenta), and 3D Checkerboard across axial, coronal, and sagittal planes, plus Row 3 ROI validation (Orig FLAIR+ROI, Fixed FLAIR+ROI, Reg T1+ROI, Fusion+ROI). <strong>Red contour = lesion ROI</strong> (shown where available — both images are in FLAIR grid space after registration).</div>
     <div class="summary-bar">
       <div class="stat-card">
         <div class="label">Total Processed</div>
@@ -444,6 +444,134 @@ def generate_registration_html(
 
   <main class="grid">
     {"".join(cards)}
+  </main>
+</div>
+</body>
+</html>
+"""
+    output_path.write_text(doc, encoding="utf-8")
+    return output_path
+
+
+def generate_geometry_validation_html(
+    records: list[dict[str, Any]],
+    output_path: Path | str,
+) -> Path:
+    """Generate standalone geometry_validation_report.html report."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    total = len(records)
+    passed = sum(r.get("status") == "PASS" for r in records)
+    failed = total - passed
+
+    rows: list[str] = []
+    for r in records:
+        sid = html.escape(str(r.get("subject_id", "unknown")))
+        is_hc = r.get("is_hc", False)
+        grp = "HC" if is_hc else "FCD"
+        status = r.get("status", "FAIL")
+        badge_cls = "badge-pass" if status == "PASS" else "badge-fail"
+
+        flair_shape = "x".join(str(x) for x in r.get("flair_shape", []))
+        t1_shape = "x".join(str(x) for x in r.get("registered_t1_shape", []))
+        roi_shape = "x".join(str(x) for x in r.get("roi_shape", []))
+        shape_str = f"{flair_shape} (FLAIR/T1/ROI)" if flair_shape == t1_shape == roi_shape else f"F:{flair_shape} T:{t1_shape} R:{roi_shape}"
+
+        spc = r.get("flair_spacing", [])
+        spc_str = f"{spc[0]:.2f}x{spc[1]:.2f}x{spc[2]:.2f}" if len(spc) >= 3 else "N/A"
+
+        max_disp = r.get("max_geometry_diff_mm", 0.0)
+        disp_str = f"{max_disp:.6f} mm"
+
+        v_before = r.get("roi_voxels_before")
+        v_after = r.get("roi_voxels_after")
+        if is_hc:
+            vox_str = "0 (HC Zero Mask)"
+        elif v_before is not None and v_after is not None:
+            vox_str = f"{v_before:,} -> {v_after:,}"
+        else:
+            vox_str = f"{v_after:,}" if v_after is not None else "N/A"
+
+        c_dist = r.get("roi_centroid_distance_mm")
+        if is_hc:
+            cdist_str = "N/A (HC)"
+        elif c_dist is not None:
+            cdist_str = f"{c_dist:.4f} mm"
+        else:
+            cdist_str = "N/A"
+
+        errs = r.get("errors", [])
+        warns = r.get("warnings", [])
+        notes: list[str] = []
+        if errs:
+            notes.append(f'<span class="reasons">{html.escape("; ".join(errs))}</span>')
+        if warns:
+            notes.append(f'<span class="warnings">{html.escape("; ".join(warns))}</span>')
+        notes_str = "<br>".join(notes) if notes else "✓ Verified"
+
+        rows.append(f"""
+        <tr>
+          <td><strong>{sid}</strong></td>
+          <td><span class="badge badge-info">{grp}</span></td>
+          <td><span class="badge {badge_cls}">{html.escape(status)}</span></td>
+          <td>{shape_str}</td>
+          <td>{spc_str}</td>
+          <td>{disp_str}</td>
+          <td>{vox_str}</td>
+          <td>{cdist_str}</td>
+          <td>{notes_str}</td>
+        </tr>
+        """)
+
+    doc = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NIfTI Geometry & Lesion ROI Validation Report</title>
+<style>{REPORT_CSS}</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>NIfTI Spatial Geometry & Lesion ROI Validation Report</h1>
+    <div class="subtitle">Strict verification of spatial grid alignment (shape, spacing, origin, direction matrix), discrete binary labels, physical centroid consistency, and multi-dataset label synchronization.</div>
+    <div class="summary-bar">
+      <div class="stat-card">
+        <div class="label">Total Evaluated</div>
+        <div class="value">{total}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Passed</div>
+        <div class="value" style="color: var(--pass);">{passed}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Failed</div>
+        <div class="value" style="color: var(--fail);">{failed}</div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Subject ID</th>
+          <th>Cohort</th>
+          <th>Status</th>
+          <th>Shapes (FLAIR/T1/ROI)</th>
+          <th>Voxel Spacing</th>
+          <th>Max Grid Disp</th>
+          <th>ROI Voxels (Orig -> Final)</th>
+          <th>Centroid Shift</th>
+          <th>Validation Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {"".join(rows)}
+      </tbody>
+    </table>
   </main>
 </div>
 </body>

@@ -39,10 +39,12 @@ from fcd_segmentation.preprocessing.discovery import (
 )
 from fcd_segmentation.preprocessing.geometry import (
     same_grid,
+    validate_subject_geometry_and_roi,
 )
 from fcd_segmentation.preprocessing.normalization import normalize_intensity
 from fcd_segmentation.preprocessing.qc_reports import (
     generate_final_dataset_qc_html,
+    generate_geometry_validation_html,
     generate_input_inventory_html,
     generate_registration_html,
     generate_skull_stripping_html,
@@ -110,6 +112,9 @@ def process_subject_pipeline(
     t1_ds_dir = output_dirs["t1_dataset"]
     fusion_ds_dir = output_dirs["fusion_dataset"]
 
+    subject_group = subject_record.get("group", "unknown")
+    is_hc = (subject_group == "hc")
+
     # 1. Check resume condition
     if resume and not overwrite:
         val_check = validate_nnunet_subject_outputs(
@@ -119,6 +124,7 @@ def process_subject_pipeline(
             fusion_dataset_dir=fusion_ds_dir,
             split=split,
             held_out_target=held_out_target,
+            is_hc=is_hc,
         )
         if val_check["status"] in {"PASS", "WARN"}:
             log.info(f"Subject {subject_id} outputs exist and validate. Skipping due to --resume.")
@@ -140,6 +146,7 @@ def process_subject_pipeline(
     result_record: dict[str, Any] = {
         "subject_id": subject_id,
         "split": split,
+        "group": subject_record.get("group", "unknown"),
         "fingerprint": subject_fingerprint,
         "status": "FAILED",
         "stages": {},
@@ -271,20 +278,6 @@ def process_subject_pipeline(
         registered_t1_stripped_path = temp_work_dir / f"{subject_id}_T1_registered_skullstripped.nii.gz"
         sitk.WriteImage(resampled_t1_stripped, str(registered_t1_stripped_path), True)
 
-        # Registration QC Visuals (ROI shown — both images are now in FLAIR grid space)
-        qc_reg = create_registration_qc_visuals(
-            fixed_path=flair_stripped_path,
-            resampled_moving_path=registered_t1_stripped_path,
-            subject_id=subject_id,
-            return_base64=True,
-            roi_path=roi_input_path,
-        )
-        qc_reg["final_metric"] = reg_res.get("final_metric")
-        qc_reg["stop_condition"] = reg_res.get("stop_condition")
-        result_record["qc_registration"] = qc_reg
-        if qc_reg.get("flags"):
-            result_record["warnings"].append(f"Registration QC flags: {'; '.join(qc_reg['flags'])}")
-
         # Stage 4: Load, Resample Label onto FLAIR grid, and Normalize Intensities
         t0 = time.time()
         log.info(f"[{subject_id}] Stage 4: Intensity normalization & label preservation")
@@ -292,6 +285,9 @@ def process_subject_pipeline(
         t1_nib = nib.load(str(registered_t1_stripped_path))
 
         # Lesion ROI: ensure exact grid agreement
+        subject_group = subject_record.get("group", "unknown")
+        is_hc = (subject_group == "hc")
+        
         if roi_input_path and Path(roi_input_path).is_file():
             roi_raw_nib = nib.load(roi_input_path)
             if same_grid(flair_nib, roi_raw_nib, tolerance_mm=0.01):
@@ -300,8 +296,38 @@ def process_subject_pipeline(
                 log.warning(f"[{subject_id}] Resampling ROI to reference FLAIR grid using nearest-neighbor.")
                 roi_nib = resample_to_reference(roi_raw_nib, flair_nib, is_mask=True)
                 result_record["warnings"].append("Resampled ROI onto reference grid.")
+        elif is_hc:
+            # HC subject: generate zero mask matching FLAIR grid
+            log.info(f"[{subject_id}] HC subject - generating zero lesion mask.")
+            zero_mask_arr = np.zeros(flair_nib.shape, dtype=np.uint8)
+            roi_header = flair_nib.header.copy()
+            roi_header.set_data_dtype(np.uint8)
+            roi_nib = nib.Nifti1Image(zero_mask_arr, flair_nib.affine, header=roi_header)
         else:
             raise FileNotFoundError(f"Missing required ROI file for {subject_id}")
+
+        # Save validated/resampled ROI for registration QC
+        roi_qc_path = temp_work_dir / f"{subject_id}_roi_for_qc.nii.gz"
+        nib.save(roi_nib, str(roi_qc_path))
+
+        # Registration QC Visuals (using validated ROI on FLAIR grid)
+        subject_group = subject_record.get("group", "unknown")
+        is_hc = (subject_group == "hc")
+        qc_reg = create_registration_qc_visuals(
+            fixed_path=flair_stripped_path,
+            resampled_moving_path=registered_t1_stripped_path,
+            subject_id=subject_id,
+            return_base64=True,
+            roi_path=roi_qc_path,
+            is_hc=is_hc,
+            raw_flair_path=flair_input_path,
+            raw_roi_path=roi_input_path,
+        )
+        qc_reg["final_metric"] = reg_res.get("final_metric")
+        qc_reg["stop_condition"] = reg_res.get("stop_condition")
+        result_record["qc_registration"] = qc_reg
+        if qc_reg.get("flags"):
+            result_record["warnings"].append(f"Registration QC flags: {'; '.join(qc_reg['flags'])}")
 
         # Brain mask for normalization: use FLAIR brain mask
         flair_mask_nib = nib.load(str(flair_mask_path))
@@ -368,7 +394,7 @@ def process_subject_pipeline(
         result_record["stages"]["dataset_writing"] = "SUCCESS"
         result_record["durations"]["normalization_and_writing"] = round(time.time() - t0, 2)
 
-        # Stage 6: Validate output files on disk
+        # Stage 6: Validate output files on disk & strict geometry/ROI validation
         val_res = validate_nnunet_subject_outputs(
             subject_id=subject_id,
             flair_dataset_dir=flair_ds_dir,
@@ -376,10 +402,34 @@ def process_subject_pipeline(
             fusion_dataset_dir=fusion_ds_dir,
             split=split,
             held_out_target=held_out_target,
+            is_hc=is_hc,
         )
         result_record["dataset_validation"] = val_res
         if val_res["status"] == "FAIL":
             raise RuntimeError(f"Output dataset validation failed for {subject_id}: {val_res['errors']}")
+
+        is_test = (split.lower() == "test")
+        subfolder = "imagesTs" if (is_test and held_out_target == "imagesTs") else "imagesTr"
+        lbl_subfolder = "labelsTs" if (is_test and held_out_target == "imagesTs") else "labelsTr"
+
+        geom_val = validate_subject_geometry_and_roi(
+            flair_img=flair_ds_dir / subfolder / f"{subject_id}_0000.nii.gz",
+            t1_img=t1_ds_dir / subfolder / f"{subject_id}_0000.nii.gz",
+            roi_img=flair_ds_dir / lbl_subfolder / f"{subject_id}.nii.gz",
+            raw_flair_img=flair_input_path,
+            raw_roi_img=roi_input_path,
+            subject_id=subject_id,
+            is_hc=is_hc,
+            extra_label_images=[
+                t1_ds_dir / lbl_subfolder / f"{subject_id}.nii.gz",
+                fusion_ds_dir / lbl_subfolder / f"{subject_id}.nii.gz",
+            ],
+        )
+        result_record["geometry_validation"] = geom_val
+        if geom_val["status"] == "FAIL":
+            raise RuntimeError(f"Strict geometry/ROI validation failed for {subject_id}: {'; '.join(geom_val['errors'])}")
+        if geom_val.get("warnings"):
+            result_record["warnings"].extend(geom_val["warnings"])
 
         result_record["status"] = val_res["status"]
         success = True
@@ -504,7 +554,6 @@ def run_pipeline(
     subject_records, inventory_summary = inventory_cohort(
         data_root=raw_root,
         participants_tsv=participants_tsv,
-        require_roi=True,
         expected_lesion_label=exp_lesion_lbl,
     )
 
@@ -555,6 +604,7 @@ def run_pipeline(
     qc_t1_records: list[dict[str, Any]] = []
     qc_reg_records: list[dict[str, Any]] = []
     qc_final_records: list[dict[str, Any]] = []
+    qc_geom_records: list[dict[str, Any]] = []
     failures: list[dict[str, str]] = []
     dataset_meta = {
         "FLAIR Dataset": str(output_dirs["flair_dataset"]),
@@ -575,6 +625,9 @@ def run_pipeline(
             generate_registration_html(qc_reg_records, qc_dir / "registration_T1_to_FLAIR.html")
         if qc_final_records:
             generate_final_dataset_qc_html(qc_final_records, dataset_meta, qc_dir / "final_dataset_qc.html")
+        if qc_geom_records:
+            generate_geometry_validation_html(qc_geom_records, qc_dir / "geometry_validation_report.html")
+            write_json_atomic(qc_geom_records, manifests_dir / "geometry_validation_report.json")
 
     try:
         for idx, subj_rec in enumerate(eligible_subjects, start=1):
@@ -598,6 +651,8 @@ def run_pipeline(
                 qc_reg_records.append(res["qc_registration"])
             if res.get("dataset_validation"):
                 qc_final_records.append(res["dataset_validation"])
+            if res.get("geometry_validation"):
+                qc_geom_records.append(res["geometry_validation"])
 
             if res["status"] == "FAILED":
                 err_msg = "; ".join(res.get("errors", [])) or "Unknown failure"
@@ -669,6 +724,7 @@ def run_pipeline(
         "inventory_summary": inventory_summary,
         "split_assignments": split_assignments,
         "results": pipeline_results,
+        "geometry_validation_records": qc_geom_records,
         "summary": {
             "attempted": len(pipeline_results),
             "passed": sum(r["status"] == "PASS" for r in pipeline_results),
@@ -690,3 +746,10 @@ def run_pipeline(
     logger.info("=======================================================")
 
     return manifest_data
+
+
+if __name__ == "__main__":
+    import sys
+    from scripts.prepare_dataset import main
+    sys.exit(main())
+

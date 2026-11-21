@@ -257,7 +257,6 @@ def validate_subject_inputs(
 def inventory_cohort(
     data_root: Path | str,
     participants_tsv: Path | str | None = None,
-    require_roi: bool = True,
     expected_lesion_label: int = 1,
     read_voxel_data: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -297,10 +296,18 @@ def inventory_cohort(
         if not anat_dir.is_dir():
             anat_dir = s_dir
 
+        # Determine if ROI is required based on group from participants.tsv
+        subject_group = "unknown"
+        if subject_id in participants_info:
+            subject_group = participants_info[subject_id].get("group", "unknown")
+        
+        # Only FCD subjects require ROI; HC subjects do not
+        subject_require_roi = (subject_group == "fcd")
+
         record = validate_subject_inputs(
             subject_id=subject_id,
             anat_dir=anat_dir,
-            require_roi=require_roi,
+            require_roi=subject_require_roi,
             expected_lesion_label=expected_lesion_label,
             read_voxel_data=read_voxel_data,
         )

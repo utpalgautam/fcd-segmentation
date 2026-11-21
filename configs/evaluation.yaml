@@ -2,5 +2,12 @@ device: auto
 checkpoint: null
 split: test
 threshold: 0.5
-metrics: [dice, sensitivity]
+metrics:
+  - dice
+  - sensitivity
+  - specificity
+  - precision
+  - hd95
 output_dir: outputs/evaluation
+dataset_id: "101"
+save_per_subject: true

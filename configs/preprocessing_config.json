@@ -42,7 +42,7 @@
   },
   "splits": {
     "policy": "participants_tsv",
-    "held_out_target": "imagesTr"
+    "held_out_target": "imagesTs"
   },
   "execution": {
     "resume": false,

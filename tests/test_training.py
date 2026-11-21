@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import nibabel as nib
+import numpy as np
 import pytest
 
 from fcd_segmentation.training.dataset_validator import (
@@ -28,19 +30,35 @@ def create_synthetic_dataset(
     dataset_name: str,
     channel_names: dict[str, str],
     case_ids: list[str],
+    test_case_ids: list[str] | None = None,
     corrupt_json: bool = False,
     missing_json: bool = False,
     missing_channel: bool = False,
     missing_label: bool = False,
     empty_file: bool = False,
+    with_test_split: bool = True,
+    orphan_tr_image: bool = False,
+    orphan_ts_image: bool = False,
+    affine_mismatch: bool = False,
+    unreadable_nifti: bool = False,
 ) -> Path:
-    """Helper to create synthetic nnU-Net datasets for testing without heavy MRI dependencies."""
+    """Helper to create synthetic nnU-Net datasets for testing."""
     dataset_dir = root / dataset_name
     dataset_dir.mkdir(parents=True, exist_ok=True)
     images_tr = dataset_dir / "imagesTr"
     labels_tr = dataset_dir / "labelsTr"
     images_tr.mkdir(parents=True, exist_ok=True)
     labels_tr.mkdir(parents=True, exist_ok=True)
+
+    if with_test_split:
+        images_ts = dataset_dir / "imagesTs"
+        labels_ts = dataset_dir / "labelsTs"
+        images_ts.mkdir(parents=True, exist_ok=True)
+        labels_ts.mkdir(parents=True, exist_ok=True)
+        if test_case_ids is None:
+            test_case_ids = [f"test-{c}" for c in case_ids]
+    else:
+        test_case_ids = []
 
     if not missing_json:
         dataset_json_path = dataset_dir / "dataset.json"
@@ -56,22 +74,55 @@ def create_synthetic_dataset(
             }
             dataset_json_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
+    def make_nii(path: Path, data: np.ndarray, affine: np.ndarray, corrupt: bool = False):
+        if corrupt:
+            path.write_bytes(b"CORRUPTED_NON_NIFTI_BYTES")
+            return
+        img = nib.Nifti1Image(data, affine)
+        nib.save(img, path)
+
+    default_affine = np.eye(4)
+    mismatched_affine = np.diag([2.0, 2.0, 2.0, 1.0])
+
     for i, case_id in enumerate(case_ids):
         # Create label
         if not (missing_label and i == 0):
             lbl_file = labels_tr / f"{case_id}.nii.gz"
-            lbl_file.write_bytes(
-                b"" if (empty_file and i == 0) else b"FAKE_NIFTI_LABEL_CONTENT"
-            )
+            if empty_file and i == 0:
+                lbl_file.write_bytes(b"")
+            else:
+                lbl_data = np.zeros((10, 10, 10), dtype=np.uint8)
+                lbl_data[2:5, 2:5, 2:5] = 1
+                make_nii(lbl_file, lbl_data, default_affine, corrupt=(unreadable_nifti and i == 0))
 
         # Create images
         for ch_idx in range(len(channel_names)):
             if missing_channel and i == 0 and ch_idx == 1:
                 continue
             img_file = images_tr / f"{case_id}_{ch_idx:04d}.nii.gz"
-            img_file.write_bytes(
-                b"" if (empty_file and i == 0) else b"FAKE_NIFTI_IMAGE_CONTENT"
-            )
+            if empty_file and i == 0:
+                img_file.write_bytes(b"")
+            else:
+                img_data = np.ones((10, 10, 10), dtype=np.float32)
+                aff = mismatched_affine if (affine_mismatch and i == 0 and ch_idx == 0) else default_affine
+                make_nii(img_file, img_data, aff)
+
+    if orphan_tr_image:
+        make_nii(images_tr / "orphan_0000.nii.gz", np.ones((10, 10, 10), dtype=np.float32), default_affine)
+
+    # Test cases
+    for ts_id in test_case_ids:
+        lbl_file = labels_ts / f"{ts_id}.nii.gz"
+        lbl_data = np.zeros((10, 10, 10), dtype=np.uint8)
+        make_nii(lbl_file, lbl_data, default_affine)
+
+        for ch_idx in range(len(channel_names)):
+            img_file = images_ts / f"{ts_id}_{ch_idx:04d}.nii.gz"
+            img_data = np.ones((10, 10, 10), dtype=np.float32)
+            make_nii(img_file, img_data, default_affine)
+
+    if orphan_ts_image and with_test_split:
+        make_nii(images_ts / "orphan_test_0000.nii.gz", np.ones((10, 10, 10), dtype=np.float32), default_affine)
 
     return dataset_dir
 
@@ -80,9 +131,7 @@ class TestPathResolution:
     def test_default_paths(self, tmp_path):
         paths = resolve_nnunet_paths(project_root=tmp_path)
         assert paths.raw == (tmp_path / "data" / "processed").resolve()
-        assert (
-            paths.preprocessed == (tmp_path / "data" / "nnunet_preprocessed").resolve()
-        )
+        assert paths.preprocessed == (tmp_path / "data" / "nnunet_preprocessed").resolve()
         assert paths.results == (tmp_path / "outputs" / "nnunet_results").resolve()
         env_dict = paths.to_env_dict()
         assert "nnUNet_raw" in env_dict
@@ -113,25 +162,33 @@ class TestDatasetValidation:
             normalize_dataset_selector("999")
 
     def test_missing_dataset_directory(self, tmp_path):
-        res = validate_dataset(tmp_path, "101", check_nifti_headers=False)
+        res = validate_dataset(tmp_path, "101", check_nifti_headers=False, require_test_split=False)
         assert not res.valid
         assert any("does not exist" in e for e in res.errors)
 
     def test_missing_dataset_json(self, tmp_path):
         create_synthetic_dataset(
-            tmp_path, "Dataset101_FLAIR", {"0": "FLAIR"}, ["case-1"], missing_json=True
+            tmp_path, "Dataset101_FLAIR", {"0": "FLAIR"}, ["case-1"], missing_json=True, with_test_split=False
         )
-        res = validate_dataset(tmp_path, "101", check_nifti_headers=False)
+        res = validate_dataset(tmp_path, "101", check_nifti_headers=False, require_test_split=False)
         assert not res.valid
         assert any("Missing dataset.json" in e for e in res.errors)
 
     def test_corrupt_dataset_json(self, tmp_path):
         create_synthetic_dataset(
-            tmp_path, "Dataset101_FLAIR", {"0": "FLAIR"}, ["case-1"], corrupt_json=True
+            tmp_path, "Dataset101_FLAIR", {"0": "FLAIR"}, ["case-1"], corrupt_json=True, with_test_split=False
         )
-        res = validate_dataset(tmp_path, "101", check_nifti_headers=False)
+        res = validate_dataset(tmp_path, "101", check_nifti_headers=False, require_test_split=False)
         assert not res.valid
         assert any("invalid JSON" in e for e in res.errors)
+
+    def test_missing_test_directory(self, tmp_path):
+        create_synthetic_dataset(
+            tmp_path, "Dataset101_FLAIR", {"0": "FLAIR"}, ["case-1"], with_test_split=False
+        )
+        res = validate_dataset(tmp_path, "101", check_nifti_headers=False, require_test_split=True)
+        assert not res.valid
+        assert any("Missing required imagesTs" in e for e in res.errors)
 
     def test_missing_fusion_channel(self, tmp_path):
         create_synthetic_dataset(
@@ -140,10 +197,11 @@ class TestDatasetValidation:
             {"0": "FLAIR", "1": "T1"},
             ["case-1"],
             missing_channel=True,
+            with_test_split=False,
         )
-        res = validate_dataset(tmp_path, "103", check_nifti_headers=False)
+        res = validate_dataset(tmp_path, "103", check_nifti_headers=False, require_test_split=False)
         assert not res.valid
-        assert any("Missing expected image channel" in e for e in res.errors)
+        assert any("Missing expected image channel file" in e for e in res.errors)
 
     def test_missing_label(self, tmp_path):
         create_synthetic_dataset(
@@ -152,22 +210,63 @@ class TestDatasetValidation:
             {"0": "FLAIR"},
             ["case-1"],
             missing_label=True,
+            with_test_split=False,
         )
-        res = validate_dataset(tmp_path, "101", check_nifti_headers=False)
+        res = validate_dataset(tmp_path, "101", check_nifti_headers=False, require_test_split=False)
         assert not res.valid
         assert any("No label files" in e for e in res.errors)
 
-    def test_empty_file(self, tmp_path):
+    def test_orphan_images_rejected(self, tmp_path):
         create_synthetic_dataset(
             tmp_path,
             "Dataset101_FLAIR",
             {"0": "FLAIR"},
             ["case-1"],
-            empty_file=True,
+            orphan_tr_image=True,
+            with_test_split=True,
         )
         res = validate_dataset(tmp_path, "101", check_nifti_headers=False)
         assert not res.valid
-        assert any("Empty" in e for e in res.errors)
+        assert any("Unexpected/orphan image file in imagesTr" in e for e in res.errors)
+
+    def test_orphan_test_images_rejected(self, tmp_path):
+        create_synthetic_dataset(
+            tmp_path,
+            "Dataset101_FLAIR",
+            {"0": "FLAIR"},
+            ["case-1"],
+            orphan_ts_image=True,
+            with_test_split=True,
+        )
+        res = validate_dataset(tmp_path, "101", check_nifti_headers=False)
+        assert not res.valid
+        assert any("Unexpected/orphan image file in imagesTs" in e for e in res.errors)
+
+    def test_affine_mismatch_rejected(self, tmp_path):
+        create_synthetic_dataset(
+            tmp_path,
+            "Dataset101_FLAIR",
+            {"0": "FLAIR"},
+            ["case-1"],
+            affine_mismatch=True,
+            with_test_split=True,
+        )
+        res = validate_dataset(tmp_path, "101", check_nifti_headers=True)
+        assert not res.valid
+        assert any("Affine mismatch" in e for e in res.errors)
+
+    def test_unreadable_nifti_rejected(self, tmp_path):
+        create_synthetic_dataset(
+            tmp_path,
+            "Dataset101_FLAIR",
+            {"0": "FLAIR"},
+            ["case-1"],
+            unreadable_nifti=True,
+            with_test_split=True,
+        )
+        res = validate_dataset(tmp_path, "101", check_nifti_headers=True)
+        assert not res.valid
+        assert any("Unreadable label NIfTI file" in e for e in res.errors)
 
     def test_valid_synthetic_dataset(self, tmp_path):
         create_synthetic_dataset(
@@ -175,8 +274,9 @@ class TestDatasetValidation:
             "Dataset101_FLAIR",
             {"0": "FLAIR"},
             [f"case-{i}" for i in range(5)],
+            with_test_split=True,
         )
-        res = validate_dataset(tmp_path, "101", check_nifti_headers=False)
+        res = validate_dataset(tmp_path, "101", check_nifti_headers=True)
         assert res.valid
         assert res.num_training_cases == 5
         assert len(res.case_ids) == 5
@@ -239,6 +339,7 @@ class TestCommandsAndWorkflow:
             fold=0,
             continue_training=True,
             device="cuda",
+            trainer="FCDnnUNetTrainer_100epochs",
         )
         assert "101" in cmd
         assert "3d_fullres" in cmd
@@ -246,6 +347,8 @@ class TestCommandsAndWorkflow:
         assert "--c" in cmd
         assert "-device" in cmd
         assert "cuda" in cmd
+        assert "-tr" in cmd
+        assert "FCDnnUNetTrainer_100epochs" in cmd
 
     def test_build_training_command_no_resume(self):
         cmd = build_training_command(
@@ -288,12 +391,12 @@ class TestCommandsAndWorkflow:
         assert "CUDA out of memory" in res.stderr
 
     def test_training_workflow_guard_blocks_without_calling_subprocess(self, tmp_path):
-        # Create dataset with only 1 case
         create_synthetic_dataset(
             tmp_path / "data" / "processed",
             "Dataset101_FLAIR",
             {"0": "FLAIR"},
             ["sub-1"],
+            with_test_split=True,
         )
         paths = resolve_nnunet_paths(project_root=tmp_path)
 
@@ -308,11 +411,28 @@ class TestCommandsAndWorkflow:
             assert not summary.success
             assert not summary.guard_passed
             assert "COHORT SIZE GUARD" in summary.guard_message
-            # Subprocess must NEVER be called
             mock_subproc.assert_not_called()
             assert len(summary.commands_executed) == 0
 
-    def test_import_does_not_execute_training(self):
-        # Verify importing training modules does not execute anything
+    def test_training_workflow_invalid_fold_rejected(self, tmp_path):
+        create_synthetic_dataset(
+            tmp_path / "data" / "processed",
+            "Dataset101_FLAIR",
+            {"0": "FLAIR"},
+            [f"sub-{i}" for i in range(5)],
+            with_test_split=True,
+        )
+        paths = resolve_nnunet_paths(project_root=tmp_path)
 
+        summary = run_training_workflow(
+            action="train",
+            dataset_arg="101",
+            fold_arg=99,  # Invalid fold index
+            paths=paths,
+            logs_dir=tmp_path / "outputs" / "training",
+        )
+        assert not summary.success
+        assert "Invalid fold argument" in (summary.error_message or "")
+
+    def test_import_does_not_execute_training(self):
         assert True
