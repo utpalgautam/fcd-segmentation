@@ -33,8 +33,9 @@ class FCDnnUNetTrainer_100epochs(nnUNetTrainer):
     ):
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 100
-        self.initial_lr = 1e-3
+        self.initial_lr = 1e-2
         self.save_every = 25
+        self.oversample_foreground_percent = 0.50
 
 
 class nnUNetTrainer_100epochs(FCDnnUNetTrainer_100epochs):
@@ -56,8 +57,12 @@ class FCDnnUNetTrainer_50epochs(nnUNetTrainer):
     ):
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 50
-        self.initial_lr = 1e-3
+        self.initial_lr = 1e-2
         self.save_every = 10
+        self.oversample_foreground_percent = 0.50
+
+    def _do_i_compile(self) -> bool:
+        return False
 
 
 class nnUNetTrainer_50epochs(FCDnnUNetTrainer_50epochs):
@@ -67,7 +72,7 @@ class nnUNetTrainer_50epochs(FCDnnUNetTrainer_50epochs):
 
 
 class FCDnnUNetTrainer_5epochs(nnUNetTrainer):
-    """5 epochs variant for rapid verification and smoke testing."""
+    """5 epochs variant for rapid verification and smoke testing on laptop / 4GB GPUs."""
 
     def __init__(
         self,
@@ -79,8 +84,12 @@ class FCDnnUNetTrainer_5epochs(nnUNetTrainer):
     ):
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 5
-        self.initial_lr = 1e-3
+        self.initial_lr = 1e-2
         self.save_every = 1
+        self.oversample_foreground_percent = 0.50
+
+    def _do_i_compile(self) -> bool:
+        return False
 
 
 class FCDnnUNetTrainer_1epoch(nnUNetTrainer):
@@ -96,8 +105,12 @@ class FCDnnUNetTrainer_1epoch(nnUNetTrainer):
     ):
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 1
-        self.initial_lr = 1e-3
+        self.initial_lr = 1e-2
         self.save_every = 1
+        self.oversample_foreground_percent = 0.50
+
+    def _do_i_compile(self) -> bool:
+        return False
 
 
 def verify_trainer_resolution(
