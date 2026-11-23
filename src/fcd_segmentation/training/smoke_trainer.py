@@ -1,12 +1,9 @@
-from fcd_segmentation.training.trainers import (
-    FCDnnUNetTrainer_100epochs,
-)
-
+from fcd_segmentation.training import trainers as _trainers
 import torch
 from nnunetv2.training.lr_scheduler.polylr import PolyLRScheduler
 
 
-class FCDnnUNetTrainer_Smoke3epochs(FCDnnUNetTrainer_100epochs):
+class FCDnnUNetTrainer_Smoke3epochs(_trainers.FCDnnUNetTrainer_100epochs):
     """Low-memory 100-epoch trainer using the previous experiment's optimizer."""
 
     def __init__(

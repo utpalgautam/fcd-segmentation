@@ -37,6 +37,9 @@ class FCDnnUNetTrainer_100epochs(nnUNetTrainer):
         self.save_every = 25
         self.oversample_foreground_percent = 0.50
 
+    def _do_i_compile(self) -> bool:
+        return False
+
 
 class nnUNetTrainer_100epochs(FCDnnUNetTrainer_100epochs):
     """Discovery alias for configuration files specifying 'nnUNetTrainer_100epochs'."""
