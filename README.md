@@ -21,14 +21,13 @@ This repository provides an automated, auditable, and fully validated end-to-end
 
 ## Table of Contents
 
+- [Benchmark Results & Multi-Modality Outcomes](#benchmark-results--multi-modality-outcomes)
 - [Pipeline Overview & Architecture](#pipeline-overview--architecture)
 - [Dataset Summary & Cohorts](#dataset-summary--cohorts)
 - [Project Status & Implemented Features](#project-status--implemented-features)
 - [Repository Layout](#repository-layout)
 - [Prerequisites](#prerequisites)
 - [Installation Guide](#installation-guide)
-  - [Linux (Ubuntu / Debian)](#linux-installation)
-  - [Windows (PowerShell)](#windows-installation)
 - [Step-by-Step Pipeline Execution](#step-by-step-pipeline-execution)
   - [Step 1: Download Raw OpenNeuro Dataset](#step-1-download-raw-openneuro-dataset)
   - [Step 2: Run Preprocessing Pipeline](#step-2-run-preprocessing-pipeline)
@@ -38,10 +37,41 @@ This repository provides an automated, auditable, and fully validated end-to-end
   - [Step 6: Train Models](#step-6-train-models)
   - [Step 7: Model Inference / Predictions](#step-7-model-inference--predictions)
   - [Step 8: Metric Evaluation & Scientific Reporting](#step-8-metric-evaluation--scientific-reporting)
+  - [Step 9: Automated Post-Training Pipeline & Visual Reporting](#step-9-automated-post-training-pipeline--visual-reporting)
+- [Documentation Index](#documentation-index)
 - [Quality Control (QC) Reports](#quality-control-qc-reports)
 - [Testing & Validation](#testing--validation)
 - [Troubleshooting & Common Issues](#troubleshooting--common-issues)
 - [Dataset Privacy & Handling](#dataset-privacy--handling)
+
+---
+
+## Benchmark Results & Multi-Modality Outcomes
+
+Full-resolution 3D models trained for 100 epochs (`FCDnnUNetTrainer_100epochs`, `3d_fullres`, `nnUNetPlans`, $128 \times 160 \times 112$ patch size) evaluated on the Fold 0 validation cohort (29 cases: 12 FCD patients + 17 Healthy Controls):
+
+| Modality / Dataset | FCD-Only Dice | Overall Cohort Dice | Sensitivity | Specificity | False Positives |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Dataset 103 (Multimodal Fusion)** | **51.04%** | 45.26% | 45.73% | **99.99%** | Virtually eliminated |
+| **Dataset 101 (FLAIR Baseline)** | **49.72%** | **61.95%** | **63.52%** | **100.00%** | Zero on controls |
+| **Dataset 102 (T1w Baseline)** | **27.25%** | 45.76% | 44.64% | **100.00%** | Zero on controls |
+
+> [!TIP]
+> **Complete Scientific Report:** For in-depth patient-by-patient metrics, cross-modal synergy discussion, and statistical breakdown, see the [Comprehensive Benchmark Report](docs/benchmark_report.md).
+
+### Visual Segmentation Reports (Interactive HTML)
+Open these reports directly in any browser to inspect slice-by-slice 4-panel overlays (MRI, Ground Truth, Prediction, and Green/Red Overlay):
+- **FLAIR Report:** [outputs/segmentation_report_Dataset101_FLAIR_fold0.html](outputs/segmentation_report_Dataset101_FLAIR_fold0.html) (4.7 MB)
+- **T1 Report:** [outputs/segmentation_report_Dataset102_T1_fold0.html](outputs/segmentation_report_Dataset102_T1_fold0.html) (3.9 MB)
+- **Fusion Report:** [outputs/segmentation_report_Dataset103_Fusion_fold0.html](outputs/segmentation_report_Dataset103_Fusion_fold0.html) (4.8 MB)
+
+### Top-Performing Validation Patients
+- **`sub-00003`:** **84.60% Dice** (Sensitivity: 91.7%, Precision: 78.5%)
+- **`sub-00123`:** **79.41% Dice** (Sensitivity: 73.7%, Precision: 86.0%)
+- **`sub-00073`:** **74.00% Dice** (*Synergistic boost:* FLAIR: 57.1%, T1: 72.2% &rarr; Fusion: **74.0%**)
+- **`sub-00055`:** **71.46% Dice** (Sensitivity: 66.5%, Precision: 77.3%)
+- **`sub-00050`:** **65.22% Dice** (*Synergistic boost:* FLAIR: 48.8%, T1: 59.9% &rarr; Fusion: **65.2%**)
+- **`sub-00040`:** **53.10% Dice** (*Breakthrough:* FLAIR: 6.5%, T1: 0.0% &rarr; Fusion: **53.1%**)
 
 ---
 
@@ -499,6 +529,42 @@ Output files are stored under `outputs/evaluation/{dataset_name}/`:
 - `evaluation_summary_{split}.json`
 - `evaluation_per_subject_{split}.csv`
 - `modality_comparison_{split}.json` (when `--dataset all` is evaluated)
+
+---
+
+### Step 9: Automated Post-Training Pipeline & Visual Reporting
+
+After training completes on one or more datasets, run the consolidated post-training automation script:
+
+```bash
+python scripts/run_post_training_pipeline.py
+```
+
+This single command automatically executes:
+1. **Validation Prediction Completeness Check:** Confirms all 29 validation cases have predictions in `outputs/predictions/` (generating any missing subjects on GPU).
+2. **Ground Truth Staging:** Stages compressed validation labels in `outputs/evaluation_data/`.
+3. **Formal Metric Evaluation:** Computes Dice, Sensitivity, Specificity, Precision, and HD95 stratified by clinical cohort (FCD vs Healthy Controls) using `scripts/evaluate.py`.
+4. **HTML Visual Segmentation Reports:** Renders 4-panel slice-by-slice overlays (MRI, Ground Truth, Prediction, and Green/Red Overlay) at the slice of maximum lesion volume into interactive standalone HTML files:
+   - `outputs/segmentation_report_Dataset101_FLAIR_fold0.html` (4.7 MB)
+   - `outputs/segmentation_report_Dataset102_T1_fold0.html` (3.9 MB)
+   - `outputs/segmentation_report_Dataset103_Fusion_fold0.html` (4.8 MB)
+5. **Cross-Modality Benchmark Summary:** Prints the consolidated comparative table in terminal.
+
+---
+
+## Documentation Index
+
+Detailed technical guides and benchmark records are maintained in the [`docs/`](docs/) directory:
+
+| Document | Description |
+| :--- | :--- |
+| **[Benchmark Outcomes Report](docs/benchmark_report.md)** | Full scientific report of Fold 0 validation outcomes across FLAIR, T1, and Multimodal Fusion. |
+| **[Installation & Server Setup](docs/installation.md)** | Step-by-step setup on Linux workstations, Windows PowerShell, and Docker GPU servers (NVIDIA H200 / A100). |
+| **[Dataset Setup & Preprocessing](docs/dataset-setup.md)** | Zenodo dataset acquisition, cohort contracts, HD-BET skull stripping, and rigid registration. |
+| **[Training & Workflow Guide](docs/training.md)** | nnU-Net v2 model training, custom 100-epoch trainers, 5-fold cross-validation, and inference. |
+| **[Experiment Protocol](docs/experiments.md)** | Experimental tracks, statistical reporting standards, and metric formulas. |
+| **[Troubleshooting Guide](docs/troubleshooting.md)** | Solutions for common GPU VRAM, compilation, CUDA, and environment errors. |
+| **[Architecture & Modules](docs/architecture.md)** | Source code package layout and module design principles. |
 
 ---
 

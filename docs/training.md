@@ -194,8 +194,29 @@ python scripts/evaluate.py --compare-all --split test
 - **Summary Statistics JSON**: `outputs/evaluation/summary_Dataset101_FLAIR_test.json`
 - **Cross-Modality Benchmark JSON**: `outputs/evaluation/modality_comparison_test.json`
 - **Training Logs**: `outputs/training/train_<timestamp>.log`
-- **Model Checkpoints**: `outputs/nnunet_results/Dataset<ID>_<Name>/nnUNetTrainer_100epochs__nnUNetPlans__3d_fullres/fold_<fold>/`
+- **Model Checkpoints**: `outputs/nnunet_results/Dataset<ID>_<Name>/FCDnnUNetTrainer_100epochs__nnUNetPlans__3d_fullres/fold_<fold>/`
   - `checkpoint_latest.pth`
   - `checkpoint_best.pth`
   - `checkpoint_final.pth`
   - `progress.png`
+
+---
+
+## 8. Automated Post-Training Pipeline & Visual Reporting
+
+After training completes on one or more datasets, run the consolidated post-training pipeline to verify prediction completeness, compute formal metrics, generate CSV/JSON summaries, and render interactive HTML visual reports:
+
+```bash
+python scripts/run_post_training_pipeline.py
+```
+
+This single command executes:
+1. **Validation Prediction Completeness Check:** Confirms all 29 validation cases have predictions in `outputs/predictions/` (generating any missing subjects on GPU).
+2. **Ground Truth Preparation:** Stages compressed validation labels in `outputs/evaluation_data/`.
+3. **Formal Metric Evaluation:** Computes Dice, Sensitivity, Specificity, Precision, and HD95 stratified by clinical cohort (FCD vs Healthy Controls) using `scripts/evaluate.py`.
+4. **HTML Visual Segmentation Reports:** Renders 4-panel slice-by-slice overlays (MRI, Ground Truth, Prediction, and Green/Red Overlay) at the slice of maximum lesion volume:
+   - `outputs/segmentation_report_Dataset101_FLAIR_fold0.html`
+   - `outputs/segmentation_report_Dataset102_T1_fold0.html`
+   - `outputs/segmentation_report_Dataset103_Fusion_fold0.html`
+5. **Cross-Modality Benchmark Summary:** Prints a consolidated comparative table in terminal.
+
