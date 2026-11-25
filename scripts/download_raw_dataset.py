@@ -22,7 +22,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 DATASET_DEFAULT = "ds004199"
 EXPECTED_PARTICIPANTS = 170
 

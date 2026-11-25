@@ -750,6 +750,7 @@ def run_pipeline(
 
 if __name__ == "__main__":
     import sys
+
     from scripts.prepare_dataset import main
     sys.exit(main())
 

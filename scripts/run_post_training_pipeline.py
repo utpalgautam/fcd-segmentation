@@ -17,13 +17,13 @@ import gzip
 import io
 import json
 import logging
-import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import nibabel as nib

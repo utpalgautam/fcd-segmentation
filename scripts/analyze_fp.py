@@ -1,4 +1,8 @@
-import json, os, numpy as np, nibabel as nib
+import json
+import os
+
+import nibabel as nib
+import numpy as np
 from scipy.ndimage import label
 
 pred_dir = "outputs/nnunet_results/Dataset101_FLAIR/FCDnnUNetTrainer_50epochs__nnUNetPlans_smoke__3d_fullres/fold_0/validation"

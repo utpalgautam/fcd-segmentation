@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Type
 
 import torch
 from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
@@ -119,7 +118,7 @@ class FCDnnUNetTrainer_1epoch(nnUNetTrainer):
 def verify_trainer_resolution(
     trainer_name: str,
     allow_builtin: bool = False,
-) -> Type[nnUNetTrainer]:
+) -> type[nnUNetTrainer]:
     """Resolve and verify trainer class identity before training or prediction.
 
     Ensures that custom project trainers (e.g. FCDnnUNetTrainer_100epochs) are

@@ -27,6 +27,8 @@ from fcd_segmentation.config import TrainingConfig
 from fcd_segmentation.training.paths import resolve_nnunet_paths
 from fcd_segmentation.training.workflow import check_environment, run_training_workflow
 
+logger = logging.getLogger("train")
+
 
 def setup_logging(verbose: bool = False) -> None:
     level = logging.DEBUG if verbose else logging.INFO

@@ -27,7 +27,10 @@ if str(SRC_DIR) not in sys.path:
 
 from fcd_segmentation.config import EvaluationConfig
 from fcd_segmentation.evaluation.evaluator import DatasetEvaluator, compare_modalities
-from fcd_segmentation.training.dataset_validator import DATASET_MAP, normalize_dataset_selector
+from fcd_segmentation.training.dataset_validator import (
+    DATASET_MAP,
+    normalize_dataset_selector,
+)
 from fcd_segmentation.training.paths import resolve_nnunet_paths
 
 logging.basicConfig(

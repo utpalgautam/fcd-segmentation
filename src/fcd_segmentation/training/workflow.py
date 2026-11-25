@@ -14,7 +14,6 @@ from fcd_segmentation.training.cross_validation import (
     check_and_enforce_splits_for_training,
     export_splits_to_nnunet,
     generate_stratified_splits,
-    validate_splits,
 )
 from fcd_segmentation.training.dataset_validator import (
     DATASET_MAP,
@@ -416,7 +415,7 @@ def run_training_workflow(
 
         # 3. Block training if selected datasets have different cohorts
         if cohort_issues:
-            err_msg = f"Cohort mismatch blocked training:\n  " + "\n  ".join(cohort_issues)
+            err_msg = "Cohort mismatch blocked training:\n  " + "\n  ".join(cohort_issues)
             logger.error(err_msg)
             summary.success = False
             summary.error_message = err_msg

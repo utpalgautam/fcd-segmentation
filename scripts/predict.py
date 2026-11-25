@@ -14,7 +14,10 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from fcd_segmentation.inference.predict import predict
-from fcd_segmentation.training.dataset_validator import DATASET_MAP, normalize_dataset_selector
+from fcd_segmentation.training.dataset_validator import (
+    DATASET_MAP,
+    normalize_dataset_selector,
+)
 from fcd_segmentation.training.paths import resolve_nnunet_paths
 from fcd_segmentation.training.trainers import verify_trainer_resolution
 

@@ -4,15 +4,13 @@
 from __future__ import annotations
 
 import base64
-from io import BytesIO
-import json
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.colors import ListedColormap
+import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
+from matplotlib.colors import ListedColormap
 from scipy import ndimage
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -72,9 +70,9 @@ def plot_subject_comparison(subject_id: str) -> Path:
 
     # Views: Axial (cz), Coronal (cy), Sagittal (cx)
     views = [
-        ("Axial View (Z={})".format(cz), np.rot90(img_norm[cz, :, :]), np.rot90(gt_data[cz, :, :]), np.rot90(pred_data[cz, :, :])),
-        ("Coronal View (Y={})".format(cy), np.rot90(img_norm[:, cy, :]), np.rot90(gt_data[:, cy, :]), np.rot90(pred_data[:, cy, :])),
-        ("Sagittal View (X={})".format(cx), np.rot90(img_norm[:, :, cx]), np.rot90(gt_data[:, :, cx]), np.rot90(pred_data[:, :, cx])),
+        (f"Axial View (Z={cz})", np.rot90(img_norm[cz, :, :]), np.rot90(gt_data[cz, :, :]), np.rot90(pred_data[cz, :, :])),
+        (f"Coronal View (Y={cy})", np.rot90(img_norm[:, cy, :]), np.rot90(gt_data[:, cy, :]), np.rot90(pred_data[:, cy, :])),
+        (f"Sagittal View (X={cx})", np.rot90(img_norm[:, :, cx]), np.rot90(gt_data[:, :, cx]), np.rot90(pred_data[:, :, cx])),
     ]
 
     fig, axes = plt.subplots(3, 4, figsize=(18, 13.5), facecolor="#0f172a")

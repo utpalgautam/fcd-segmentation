@@ -23,14 +23,10 @@ from pathlib import Path
 
 import nibabel as nib
 import numpy as np
-import pytest
-import SimpleITK as sitk
 
 from fcd_segmentation.preprocessing.dataset import write_subject_to_nnunet
 from fcd_segmentation.preprocessing.geometry import (
-    compute_roi_physical_bbox,
     compute_roi_physical_centroid,
-    maximum_corner_displacement_mm,
     same_grid,
     validate_subject_geometry_and_roi,
 )

@@ -17,7 +17,6 @@ import csv
 import json
 import logging
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
@@ -87,7 +86,7 @@ def generate_stratified_splits(
     """Generate reproducible group-stratified cross-validation folds from participants.tsv."""
     is_valid, tsv_issues, rows = validate_participants_tsv(participants_tsv_path)
     if not is_valid:
-        raise ValueError(f"participants.tsv validation failed:\n  " + "\n  ".join(tsv_issues))
+        raise ValueError("participants.tsv validation failed:\n  " + "\n  ".join(tsv_issues))
 
     train_rows = [r for r in rows if r["split"].strip().lower() == "train"]
     test_rows = [r for r in rows if r["split"].strip().lower() == "test"]
@@ -135,7 +134,7 @@ def generate_stratified_splits(
         expected_n_splits=n_splits,
     )
     if not splits_valid:
-        raise RuntimeError(f"Generated cross-validation splits failed validation:\n  " + "\n  ".join(split_issues))
+        raise RuntimeError("Generated cross-validation splits failed validation:\n  " + "\n  ".join(split_issues))
 
     logger.info(
         "Generated and validated %d-fold stratified splits for %d training cases (%d FCD, %d HC)",

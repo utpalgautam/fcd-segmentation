@@ -1,11 +1,10 @@
-from pathlib import Path
 
 import pytest
+
+pytest.importorskip("nnunetv2")
 from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
 
 from fcd_segmentation.training.trainers import (
-    FCDnnUNetTrainer_50epochs,
-    FCDnnUNetTrainer_100epochs,
     verify_trainer_resolution,
 )
 
